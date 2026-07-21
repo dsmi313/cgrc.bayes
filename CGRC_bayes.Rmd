@@ -806,12 +806,20 @@ estimand.
 # Unresolved questions
 
 1. **Corrected JAGS prior.** `r jags_resolution`
-2. **n = 232 versus the published n = 233.** No filtering rule reproduces 233.
-   Needs the author.
-3. **The 0.72 CGR.** Matches the placebo-arm rate (0.7234) almost exactly.
-   Plausible but unconfirmed.
-4. **Szigeti's generative source code was not located.** The `noise` resolution
-   rests on convergent empirical evidence, not the original implementation.
+2. **n = 232 versus the published n = 233.** The source paper (Szigeti 2023)
+   states n = 233 week-1 datapoints under exactly the `w1s1` filter used here, so
+   the analysis rule is confirmed; the public file still gives 232. A genuine
+   one-record gap, unexplained by the papers. See `reports/SOURCES.md`.
+3. **The 0.72 CGR — explained.** The paper's Fig 4 caption states the trial CGR
+   is 0.72, but that equals the *placebo-arm* correct-guess rate (0.7234); the
+   analyzed data's overall CGR is 0.647 (which reproduces the paper's Table 2),
+   and the author's 2024 review cites ~65–70%. The Fig 4 reference line is
+   therefore misplaced by ~0.07 — the error the Section 4 identity check catches.
+   Worth one confirmation from the author. See `reports/SOURCES.md`.
+4. **Exact AEB simulation source not located.** The `noise = "all"` resolution
+   now matches the paper's published Table 1 (0.05/0.86/0.78/0.99) and Hedges
+   g = 0.4, but the exact Eq. 4 SD scope lives in the paper's Supplementary
+   Table 1, so this is not yet a line-by-line code check.
 5. **No head-to-head operating-characteristic comparison** of the KDE procedure
    against the Bayesian one. Section 9 characterises the estimand, not the two
    procedures against each other.
@@ -819,6 +827,27 @@ estimand.
 7. **KDE bandwidth.** The original uses sklearn's fixed default of 1.0. Because
    the estimand uses only means this does not matter here, but it was never a
    deliberate choice and would matter for any tail-based estimand.
+
+---
+
+# Sources
+
+Full per-finding citations are in `reports/SOURCES.md`.
+
+- **Method paper (reproduced here).** Szigeti B, Nutt D, Carhart-Harris R,
+  Erritzoe D. "The difference between 'placebo group' and 'placebo control': a
+  case study in psychedelic microdosing." *Scientific Reports* 13:12107 (2023).
+  <https://doi.org/10.1038/s41598-023-34938-7>
+- Szigeti B, Weiss B, Rosas FE, Erritzoe D, Nutt D, Carhart-Harris R. "Assessing
+  expectancy and suggestibility in a trial of escitalopram v. psilocybin for
+  depression." *Psychological Medicine* 54, 1717–1724 (2024).
+  <https://doi.org/10.1017/S0033291723003653>
+- Szigeti B, Heifets BD. "Expectancy Effects in Psychedelic Trials."
+  *Biological Psychiatry: Cognitive Neuroscience and Neuroimaging* 9:512–521
+  (2024). <https://doi.org/10.1016/j.bpsc.2024.02.004>
+- Public dataset: Szigeti B, et al. "Self-blinding citizen science to explore
+  psychedelic microdosing." *eLife* 10:e62878 (2021).
+  <https://doi.org/10.7554/eLife.62878>
 
 ---
 
