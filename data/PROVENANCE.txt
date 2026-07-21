@@ -1,0 +1,7 @@
+source_url:  https://raw.githubusercontent.com/szb37/mcrds_public/master/data/pacutes.csv
+accessed:    2026-07-21
+sha256:      86aa784528ee045c61fadf3eacfd3e1897d16aae9839cee7cb4bfe839a7cc4e3
+bytes:       977449
+records:     15623
+note:        public data from the self-blinding psychedelic microdose trial,
+             as re-analysed by Szigeti et al. (2023) Sci Rep 13:12107.
