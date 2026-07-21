@@ -27,16 +27,27 @@ gives a posterior probability instead of an average of p-values. It is not
 better inference about the trial, and I have tried to keep the writeup from
 implying otherwise.
 
-**Two things in the data I could not resolve.** You report n = 233 for week 1;
-the public file gives me 232 on every acute scale, with no duplicate trial IDs
-and no missing outcome values. I could not find a filtering rule that produces
-233. Separately, the CGR of 0.72 does not appear anywhere in my calculations -
-the overall week-1 rate is 0.647, and pooling weeks does not move it much. But
-the correct-guess rate *within the placebo arm* is 0.7234, while the microdose
-arm is only 0.5275. My guess is that 0.72 is the placebo-conditional rate, but
-I would rather ask than assume. If that is right it might be worth stating
-explicitly somewhere, because the asymmetry is quite large and a single scalar
-CGR hides it.
+**The 0.72, resolved from your code.** I eventually found
+`CorrectGuessRateCurve` (it was in your data-availability statement - I had been
+looking in `mcrds_public`). `config.py` has `trial_cgrs = {'sbmd': 0.72}` as a
+hardcoded constant, and that is what draws the Figure 4 green line, while the
+code separately computes the trial CGR from the data as 0.647. So the line sits
+at 0.72 by annotation, not at the data's guess rate. It happens to equal the
+placebo-arm correct-guess rate (0.7234); the microdose arm is only 0.5275. It
+does not affect any estimate, but the line and the computed CGR disagree, so it
+may be worth a footnote.
+
+**One thing I still could not resolve.** You report n = 233 for week 1; the
+public file gives me 232 on every acute scale, with no duplicate trial IDs and
+no missing outcome values. I could not find a filtering rule that produces 233 -
+one record short.
+
+**A pattern that runs opposite to your 2024 review.** The review says correct
+guess rates are generally higher in the active arms. Here it is the other way:
+placebo guesses correctly 72% of the time and microdose only 53%, because guesses
+skew heavily toward "placebo" (9508 vs 6115 across the set). It does not change
+the method - the curve conditions on the strata through r and s - but it flips
+the intuition about which arm expectancy inflates, so I wanted to flag it.
 
 **One ambiguity in the AEB equations.** Equation 4 does not say whether the SD
 of the DTE and AEB terms applies to the whole sample or only to the gated

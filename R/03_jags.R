@@ -99,6 +99,10 @@ cgr_jags <- function(df, grid = seq(0, 1, length.out = 101),
     ess = ess, rhat = rh, stringsAsFactors = FALSE
   )
   out$mcse <- out$sd / sqrt(out$ess)   # autocorrelation-corrected
+  # For the Student-t likelihood, expose the posterior-mean estimated degrees
+  # of freedom: small nu (say < 10) means genuinely heavy tails and the robust
+  # fit is doing work; large nu means it collapsed back toward the normal.
+  if ("nu" %in% colnames(all)) attr(out, "nu") <- mean(all[, "nu"])
   out
 }
 

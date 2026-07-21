@@ -103,10 +103,59 @@ No scale at any timepoint has n = 233. Eight scales at w1s1 have exactly 232.
 No duplicate trial_ids, no missing outcome values. Off by one record. For the
 author.
 
+## Bug fixes (2026-07-21)
+
+### CH-13  Grid-snapping in the empirical Results table  [BREAKING - corrects a number]
+The results table reported the unadjusted PANAS effect at the nearest grid point
+(0.65) instead of the exact observed CGR (0.6466): Delta(0.65) = 3.207 vs
+Delta(0.6466) = 3.157, an 0.05 overstatement (Mood 0.09, Energy 0.10). Awkward,
+because the document flags a 1.03 discrepancy in the paper's 0.72 line while
+carrying its own error from the same class of mistake.
+**Fix:** the empirical chunk evaluates on `sort(unique(c(GRID, c_obs)))` so the
+posterior is read at exactly c_obs; `cgr_summary_table()` now warns if the grid
+does not contain the requested target within tol, so snapping cannot recur
+silently.
+
+### CH-14  pct_attenuation blew up for cognitive performance
+`pct_attenuation` was 151.5% for CPS - a ratio to an unadjusted estimate of
+-0.011 whose 95% CrI is [-0.169, 0.151], i.e. not distinguishable from zero.
+**Fix:** `cgr_summary_table()` suppresses `pct_attenuation` (NA) when the
+unadjusted estimate's 95% CrI includes zero. abs_attenuation is retained.
+
+### CH-15  Student-t robustness sensitivity now runs
+The Rmd mentioned `cgr_jags(likelihood = "t")` but never executed it (zero
+occurrences of `jags-t` in any render). With JAGS working there was no blocker,
+and the skew table (PANAS/ACAC skew -0.94, excess kurtosis 1.42) makes it worth
+running. **Added:** a Section 11 chunk that fits the normal and Student-t
+likelihoods and reports the estimated nu. Result: nu ~ 18, so the t collapses
+toward the normal - the Gaussian conclusion is robust. `cgr_jags()` now exposes
+the posterior-mean nu via `attr(out, "nu")`.
+
+## Findings from the author's source code (2026-07-21)
+
+### CH-16  Source code located: szb37/CorrectGuessRateCurve
+Named in the 2023 paper's data-availability statement; read at last (see
+SOURCES.md S4). Consequences:
+- **0.72 is hardcoded** (`trial_cgrs = {'sbmd': 0.72}`), not computed - settles
+  U3. The code separately computes the data CGR as 0.647 and does not use it for
+  the reference line.
+- **Estimand confirmed independently**: the code's r and s formulas are
+  identical to this implementation - settles U4.
+- **"100 times" corrected**: `cgrC_low` uses `n_cgrc_trials = 32` over
+  `np.linspace(0, 1, 13)` (options 32/64/96, never 100). Real Monte Carlo error
+  is ~1.8x the 100-resample value. Section 2 and the KDE ladder updated
+  (32 added).
+- **legacy_round is the faithful reproduction**: `get_strata_ratio` does
+  `round(x, 2)`, so `legacy_round = TRUE` reproduces Szigeti's numbers
+  (+0.010 PANAS, +0.019 Energy). Documented in Section 8; the exact ratios
+  remain the default for the estimand/Bayesian sections.
+- **U9 raised**: guess rates are reversed vs the 2024 review's "higher in the
+  active arms" (placebo 0.723 vs microdose 0.528 here).
+
 ## Preserved unchanged
 
 - The estimand: strata, r, s, weights, Delta(c).
-- The observed-CGR identity check.
+- The observed-CGR identity check (exact-ratio path).
 - Default vague priors (m0=0, k0=1e-6, a0=b0=1e-3).
 - Week-1-only filter and use of raw value as outcome.
 - The supplementary stratum-allocation validation.

@@ -60,6 +60,35 @@ Same-author review. Used here for two facts that bear on U3 and U6:
 - Microdose effects fall below the 0.5-SMD minimally-important difference,
   "too small to be noticeable" - reinforces the U6 magnitude argument.
 
+## S4 — the author's source code (located 2026-07-21)
+
+Szigeti B. **CorrectGuessRateCurve** (analysis code for S1). MIT licensed,
+DrugNerdsLab, 2022. <https://github.com/szb37/CorrectGuessRateCurve>
+
+Named in S1's data-availability statement; earlier turns of this project probed
+`szb37/mcrds_public` (the *data* mirror) and reported the source "not located".
+It was in the paper the whole time. Reading it closes two open items and
+corrects two document claims:
+
+- **The 0.72 is hardcoded (closes U3).** `src/config.py`:
+  `trial_cgrs = {'sbmd': 0.72}` — a fixed constant, drawn as the Figure 4
+  reference line. The same code computes the trial CGR from data as
+  `(n_plpl + n_acac) / n` = 0.647 (`src/cgrc/core.py` line ~181), but that
+  computed value is not what the plotted line uses. So 0.72 is an annotation,
+  not the data's CGR; it coincides with the placebo-arm rate 0.7234.
+- **The estimand is independently confirmed (closes U4).**
+  `get_strata_ratio` / `get_strata_sample_sizes` in `src/cgrc/core.py` form
+  `r = PLPL / (PLPL + ACAC)` and `s = ACPL / (ACPL + PLAC)` — identical to this
+  implementation — and the default `strata_sampling = 'all_prop'` confirms the
+  `noise = "all"` reading (CH-04).
+- **Resample count (corrects "100 times").** `config.py` `cgrC_low` uses
+  `n_cgrc_trials = 32` over `np.linspace(0, 1, 13)` (options 32/64/96, never
+  100). The empirical Figure 4 used 32 resamples across 13 grid points, so the
+  real Monte Carlo error is ~1.8x a 100-resample assumption.
+- **Rounding (documents the reproduction default).** `get_strata_ratio` does
+  `round(x, 2)` on every stratum proportion, so `legacy_round = TRUE` is the
+  faithful reproduction path (+0.010 PANAS, +0.019 Energy vs the exact ratios).
+
 ## The public dataset
 
 `data/pacutes.csv`, from the self-blinding microdose trial (Szigeti et al.,

@@ -76,16 +76,27 @@ Szigeti's method:
 3. Draw samples from the four KDEs in proportions such that the combined
    pseudo-dataset has the **target CGR**.
 4. Fit `outcome ~ treatment` to that pseudo-dataset.
-5. **Repeat 100 times** and average the resulting estimates and p-values.
+5. **Repeat, and average** the resulting estimates and p-values.
 
 Steps 3–5 are the part this document replaces. Steps 1–2 define the estimand
 and are retained exactly.
 
+**A note on the resample count.** The paper's text (Fig 2 caption) says the
+KDE sampling is "repeated 100 times". The author's published source code
+([`szb37/CorrectGuessRateCurve`](https://github.com/szb37/CorrectGuessRateCurve),
+`src/config.py`) tells a different story: the CGR *curve* configuration
+`cgrC_low` uses `n_cgrc_trials = 32` over `np.linspace(0, 1, 13)` — **32
+resamples across 13 CGR grid points**, not 100 across a fine grid (the
+`n_cgrc_trials` options are 32/64/96, never 100). So the empirical Figure 4 was
+produced with 32 resamples. Because Monte Carlo error scales as
+$1/\sqrt{n_{\text{rep}}}$, the real error is about $\sqrt{100/32} \approx 1.8\times$
+larger than a 100-resample assumption. Section 8 quantifies it directly and
+includes 32 in the ladder.
+
 Two properties of step 5 matter later. Averaging p-values across resamples has
 no accepted inferential interpretation — it is not a p-value for any hypothesis
-test. And 100 resamples introduces Monte Carlo error into the reported estimate
-that is a property of the computation, not of the trial. Section 8 quantifies
-both.
+test. And resampling introduces Monte Carlo error into the reported estimate
+that is a property of the computation, not of the trial.
 
 ---
 
@@ -409,6 +420,40 @@ do.call(rbind, lapply(names(sb), function(nm) {
 }))
 ```
 
+## Faithful reproduction: Szigeti rounds the ratios
+
+The identity above uses the **exact** within-class ratios $r$ and $s$. The
+author's code does not: `get_strata_ratio` in
+[`szb37/CorrectGuessRateCurve`](https://github.com/szb37/CorrectGuessRateCurve)
+(`src/cgrc/core.py`) computes each stratum proportion as `round(x, 2)` before
+forming $r$ and $s$. So the **faithful reproduction path is
+`legacy_round = TRUE`**, and the exact-ratio default used elsewhere in this
+document — while mathematically the cleaner estimand, and the one for which the
+identity holds to machine precision — is *not* the number Szigeti actually
+computed. The impact is small but real:
+
+```{r val-legacy}
+do.call(rbind, lapply(names(sb), function(nm) {
+  s <- cgr_strata(sb[[nm]]); m <- lapply(s, mean); o <- cgr_observed(s)
+  ex <- cgr_ratios(s, legacy_round = FALSE)   # exact
+  lg <- cgr_ratios(s, legacy_round = TRUE)    # Szigeti's round(., 2)
+  data.frame(outcome = nm,
+             unadj_exact  = round(cgr_delta(o, m, ex$r, ex$s), 3),
+             unadj_legacy = round(cgr_delta(o, m, lg$r, lg$s), 3),
+             adj_exact    = round(cgr_delta(0.5, m, ex$r, ex$s), 3),
+             adj_legacy   = round(cgr_delta(0.5, m, lg$r, lg$s), 3),
+             shift = round(cgr_delta(o, m, lg$r, lg$s) -
+                           cgr_delta(o, m, ex$r, ex$s), 3))
+}))
+```
+
+Rounding shifts the unadjusted PANAS estimate by about +0.01 and Energy VAS by
+about +0.02 — negligible for any conclusion, but it is what Szigeti ran, so it
+is the correct baseline when the goal is to match the published table exactly
+rather than to state the exact estimand. The Bayesian sections keep the exact
+ratios, because there the object of interest is the estimand itself, not a
+byte-for-byte reproduction of the original script.
+
 ## The reference-line test
 
 The identity above makes the position of the reference line *checkable* rather
@@ -438,12 +483,18 @@ Read `err_at_obs` against `err_at_0.72`. At the computed CGR of 0.647 the curve
 lands on the paper's own reported unadjusted values to within ~0.12; at 0.72 it
 overshoots them by 1.0–2.1 points on the three self-report scales. So the green
 line as drawn is **not** the point where the curve equals the reported
-unadjusted estimate — the signature of a misplaced reference line. It does not
-by itself say *why*: 0.72 equals the placebo-arm correct-guess rate (0.7234,
-Section 10), the line may have been read off a raster as 0.70 rather than 0.72,
-or the figure and table may use slightly different subsets. That is for the
-author, and is not to be settled by picking the flattering reading (see
-`reports/UNRESOLVED.md` U3).
+unadjusted estimate — the signature of a misplaced reference line.
+
+**The source code settles why.** In
+[`szb37/CorrectGuessRateCurve`](https://github.com/szb37/CorrectGuessRateCurve)
+the reference line is drawn from `trial_cgrs = {'sbmd': 0.72}` in
+`src/config.py` — a **hardcoded constant**, not a quantity computed from the
+data. The same code *does* compute the trial's CGR from the data as
+`(n_plpl + n_acac) / n` (= 0.647), but that computed value is not what the plot's
+green line uses. So 0.72 is a fixed annotation that does not match the data's
+correct guess rate; it coincides almost exactly with the **placebo-arm**
+correct-guess rate (0.7234, Section 10). This is no longer a hypothesis — see
+`reports/UNRESOLVED.md` U3 and `reports/SOURCES.md`.
 
 ## Original KDE procedure vs the analytic curve
 
@@ -451,13 +502,15 @@ This is the section that separates the three possible sources of difference.
 
 ```{r val-kde, cache=TRUE}
 set.seed(11)
+# 32 is the resample count the author's code actually used for the CGR curve
+# (config.py cgrC_low); 100 is the count the paper text describes.
 kde_tab <- do.call(rbind, lapply(names(sb), function(nm) {
   d <- sb[[nm]]; o <- cgr_observed(cgr_strata(d))
   rbind(
     cbind(outcome = nm, target = "observed",
-          cgr_kde_ladder(d, o,   reps = c(100, 1000, 10000))),
+          cgr_kde_ladder(d, o,   reps = c(32, 100, 1000, 10000))),
     cbind(outcome = nm, target = "0.50",
-          cgr_kde_ladder(d, 0.5, reps = c(100, 1000, 10000))))
+          cgr_kde_ladder(d, 0.5, reps = c(32, 100, 1000, 10000))))
 }))
 kde_tab[, c("outcome","target","n_rep","kde_est","kde_mcse","mean_p",
             "analytic","diff_from_analytic")]
@@ -470,9 +523,11 @@ Three conclusions:
    10 000 resamples the KDE average converges on the analytic value in every
    cell. The estimand uses only stratum means, and KDE smoothing preserves
    means.
-2. **100 resamples is materially noisy.** Monte Carlo SE is 0.12–0.29 points on
-   the PANAS/VAS scales. PANAS at CGR 0.50 moves roughly 20% between 100 and
-   10 000 resamples.
+2. **The real resample count is materially noisy.** At the author's actual
+   32 resamples the Monte Carlo SE is roughly 0.2–0.5 points on the PANAS/VAS
+   scales — about $1.8\times$ the 100-resample value, and larger than the 0.12
+   discrepancy this document flags in the paper's reference-line placement.
+   PANAS at CGR 0.50 wanders by tens of a percent purely from resampling noise.
 3. **The averaged p-values reproduce the published ones** (PANAS ~0.41 vs 0.43;
    Energy ~0.043 vs 0.04), confirming the port is faithful rather than merely
    plausible.
@@ -661,8 +716,13 @@ Flagged for the author.
 
 ```{r empirical, cache=TRUE}
 set.seed(2)
-fits <- lapply(sb, function(d)
-  cgr_conjugate(d, GRID, n_draws = N_DRAWS, direction = 1))
+# Evaluate the posterior on a grid that includes each outcome's *exact* observed
+# CGR, so the unadjusted row is read at c_obs (e.g. 0.6466) rather than snapped
+# to the nearest 0.01 grid point (0.65), which would overstate it by ~0.05.
+fits <- lapply(sb, function(d) {
+  o <- cgr_observed(cgr_strata(d))
+  cgr_conjugate(d, sort(unique(c(GRID, o))), n_draws = N_DRAWS, direction = 1)
+})
 
 do.call(rbind, lapply(names(sb), function(nm)
   cgr_summary_table(fits[[nm]], cgr_observed(cgr_strata(sb[[nm]])), nm)))
@@ -767,9 +827,40 @@ do.call(rbind, lapply(names(sb), function(nm) {
 ```
 
 Unequal stratum variances are handled by construction — each stratum has its own
-$\sigma_j^2$, so no homoscedasticity assumption is imposed across strata. A
-Student-$t$ likelihood sensitivity requires JAGS (`cgr_jags(likelihood = "t")`)
-and is **not run here** when rjags is absent.
+$\sigma_j^2$, so no homoscedasticity assumption is imposed across strata. But the
+skew table is not innocuous: PANAS stratum ACAC has skew $-0.94$ and excess
+kurtosis $1.42$, which is exactly the regime where a Gaussian likelihood's
+*intervals* (not its means) can be optimistic. So the robust check is worth
+running rather than deferring.
+
+A Student-$t$ likelihood with estimated degrees of freedom $\nu$ down-weights
+outliers and has no conjugate form, so it is reachable only through JAGS.
+
+```{r sens-student-t, eval=has_jags, cache=TRUE}
+set.seed(6)
+jn <- cgr_jags(panas, likelihood = "normal", n_iter = 10000, n_chains = 4)
+jt <- cgr_jags(panas, likelihood = "t",      n_iter = 10000, n_chains = 4)
+i5 <- function(x) which.min(abs(x$cgr - 0.5))
+data.frame(
+  likelihood = c("normal", "Student-t"),
+  adj_at_0.5 = round(c(jn$est[i5(jn)], jt$est[i5(jt)]), 3),
+  cri_95 = c(sprintf("[%.2f, %.2f]", jn$lo[i5(jn)], jn$hi[i5(jn)]),
+             sprintf("[%.2f, %.2f]", jt$lo[i5(jt)], jt$hi[i5(jt)])),
+  P_positive = round(c(jn$p_fav[i5(jn)], jt$p_fav[i5(jt)]), 3),
+  est_df_nu = c(NA, round(attr(jt, "nu"), 1)))
+```
+
+```{r sens-student-t-note, echo=FALSE, results='asis'}
+if (!has_jags) cat(
+"> **NOT RUN.** rjags is unavailable, so the Student-*t* robustness check did",
+"not execute. Install JAGS and re-render to run it.\n")
+```
+
+A **small** $\nu$ (say under 10) would mean the data are genuinely heavier-tailed
+than Gaussian and the robust fit is doing real work; a **large** $\nu$ means the
+$t$ collapsed back toward the normal and the Gaussian assumption was safe. With
+$\nu \approx 18$ here, the normal and Student-$t$ rows agree closely — so despite
+the ACAC skew, the PANAS conclusion does not rest on a handful of observations.
 
 ---
 

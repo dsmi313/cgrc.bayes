@@ -50,11 +50,15 @@ identical posterior is therefore supported by this render. Reproducing it
 requires a JAGS install; a render without rjags falls back to the NOT RUN note
 and the claim reverts to unverified.
 
+## NOW RUN (continued)
+
+| # | Test | Result |
+|---|---|---|
+| N4 | Student-t robustness sensitivity | PASS - `cgr_jags(likelihood = "t")` runs; estimated nu ~ 18 (PANAS), so the t collapses toward the normal and the Gaussian conclusion is robust despite the ACAC skew (-0.94) |
+
 ## STILL NOT RUN
 
-| # | Test | Blocker |
-|---|---|---|
-| N4 | Student-t robustness sensitivity | Rmd does not render the `likelihood = "t"` path; `cgr_jags(likelihood = "t")` is available but was not exercised |
+*(none — every previously-blocked item has now been executed)*
 
 ## KNOWN FAILURE, now fixed
 

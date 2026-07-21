@@ -36,7 +36,7 @@ Grouped by where it enters. "Testable here" means testable with these data.
 | C3 | condition MD/PL maps to active/placebo. | Verified in the audit table. |
 | C4 | guess MD/PL maps to guessed-active/guessed-placebo. | Verified. |
 | C5 | The public file matches the analysed file. | **QUESTIONABLE**: n = 232 vs published 233. See UNRESOLVED U2. |
-| C6 | The observed CGR is 0.647, not 0.72. | Verified from data; 0.72 matches the placebo-arm rate. See U3. |
+| C6 | The observed CGR is 0.647, not 0.72. | Verified from data; 0.72 is a hardcoded constant in the author's code (`trial_cgrs`), matching the placebo-arm rate. See U3, SOURCES.md S4. |
 | C7 | No missing outcome values at w1s1. | Verified: zero blanks on all four scales. |
 | C8 | No duplicate participants at w1s1. | Verified: 232 rows, 232 unique trial_id. |
 
@@ -45,7 +45,7 @@ Grouped by where it enters. "Testable here" means testable with these data.
 | # | Assumption | Status |
 |---|---|---|
 | D1 | The AEB model is the right data-generating process. | It is the paper's model. Operating characteristics are conditional on it and would differ under a misspecified DGP. |
-| D2 | `noise = "all"` is the intended Eq 4 reading. | Evidence-based (CH-04), not verified against source. See U4. |
+| D2 | `noise = "all"` is the intended Eq 4 reading. | Confirmed from source: default `strata_sampling = 'all_prop'` in CorrectGuessRateCurve. See U4, SOURCES.md S4. |
 | D3 | True Delta(0.5) equals the direct treatment effect. | Follows from the model: at CGR 0.5 the guess distribution is identical across arms, so AEB cancels. |
 | D4 | 500 trials is enough. | Monte Carlo SE on coverage is about sqrt(.05*.95/500) = 0.010, so 0.936 vs 0.95 is within noise. |
 
@@ -55,5 +55,8 @@ Grouped by where it enters. "Testable here" means testable with these data.
 - That the energy VAS result is a direct drug effect.
 - That attenuation measures the amount of effect caused by expectancy.
 - That reproducing the published curve validates any causal assumption.
-- That the backends provably target an identical posterior (unverified).
-- That Figure 3 is a verified line-by-line reproduction (source code not located).
+- That the energy VAS result survives every robustness axis untested (the
+  Student-t check now runs; nu ~ 18, so it is robust for PANAS).
+- That the AEB simulation was reproduced line-by-line from the author's
+  simulation module (the estimand's r/s formulas are confirmed from source, but
+  the Eq. 4 SD scope was not re-derived line-by-line).

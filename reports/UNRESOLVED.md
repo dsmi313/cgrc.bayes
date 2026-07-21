@@ -3,12 +3,14 @@
 Ranked by how much they would change a conclusion. Do NOT close any of these by
 choosing the convenient answer.
 
-> **Update (2026-07-21).** The three Szigeti source papers were obtained and
-> read (see `reports/SOURCES.md`). U1 is resolved (JAGS ran, PASS). U3, U4 and
-> U6 are now grounded in the papers rather than in recollection, and U2's
-> methodology is confirmed from the paper. Where an item is genuinely closed it
-> says so; where the paper narrows but does not settle it, the residual is
-> stated plainly. Nothing was closed by picking a convenient answer.
+> **Update (2026-07-21).** The three Szigeti source papers *and the author's
+> analysis source code* (`szb37/CorrectGuessRateCurve`) were obtained and read
+> (see `reports/SOURCES.md`). Now resolved: U1 (JAGS ran, PASS), U3 (0.72 is a
+> hardcoded constant in the code), U4 (source located; estimand independently
+> confirmed). U6 is grounded in the papers; U2 remains open. A new item U9
+> records a guess-rate pattern that contradicts the 2024 review. Where an item
+> is genuinely closed it says so; residuals are stated plainly. Nothing was
+> closed by picking a convenient answer.
 
 ## U1  Corrected JAGS prior   [RESOLVED 2026-07-21 - PASS]
 No JAGS in the authoring environment, so `cgr_check_backends()` had never run.
@@ -39,38 +41,46 @@ one-record gap between the published n and the public release.
 record withheld from the public file or a typo in the paper. Confirm with the
 author.
 
-## U3  The quoted CGR of 0.72   [explained; provenance worth one confirmation]
-**Source check (Szigeti 2023 Fig 4 caption — S1; Szigeti & Heifets 2024 — S3).**
-The 2023 paper does quote it: the Fig 4 caption reads "vertical green dashed line
-corresponds to the trial's original CGR (= 0.72)", and the line is drawn at
-~0.72. But 0.72 cannot be the analyzed data's overall CGR:
-- The public week-1 data gives overall CGR **0.647** and reproduces the paper's
-  own Table 2 estimates exactly (both are independent of where the CGR line sits,
-  so the analyzed data's observed CGR is ~0.647, not 0.72).
-- The **placebo-arm** correct-guess rate is **0.7234 ~= 0.72**.
-- The same author's 2024 review states the microdose correct-guess rate is
-  "only ~65% to 70%" - again not 0.72.
-**Conclusion:** 0.72 is the placebo-conditional correct-guess rate, not the
-overall CGR; the Fig 4 reference line is therefore misplaced by ~0.07 on the CGR
-axis - the exact class of error the observed-CGR identity check (Section 4)
-exists to catch. Numerically compelling and now backed by the sources; the only
-thing left is a one-line confirmation from the author that 0.72 was the
-placebo-conditional figure.
+## U3  The quoted CGR of 0.72   [RESOLVED 2026-07-21 - hardcoded constant]
+**Settled from the author's source code (SOURCES.md S4).**
+`szb37/CorrectGuessRateCurve/src/config.py` contains
+`trial_cgrs = {'sbmd': 0.72}` - a **hardcoded constant**, drawn as the Figure 4
+reference line. It is not computed from the data: the same code computes the
+trial CGR as `(n_plpl + n_acac) / n` = 0.647 and does not use it for the line.
+So 0.72 is a fixed annotation, not the data's correct guess rate; it coincides
+with the **placebo-arm** correct-guess rate (0.7234). The reference-line test
+(Rmd Section 8) shows the curve equals the reported unadjusted values at 0.647,
+not at 0.72. This is no longer a hypothesis.
+**Residual (cosmetic):** whether the author intended 0.72 as the placebo-arm
+figure or simply mis-set the constant is a question only they can answer, but it
+does not affect any estimate here.
 
-## U4  Szigeti's generative source code was not located
-`szb37/mcrds_public` serves `data/pacutes.csv` but returns 404 for `README.md`
-and every source path probed; the GitHub API was rate-limited. The `noise`
-resolution (CH-04) rests on convergent empirical evidence, not on reading the
-author's implementation.
-**Source check (Szigeti 2023 Table 1 — S1).** The published Table 1 rates
-(0.05 / 0.86 / 0.78 / 0.99) and the DTE effect size (Hedges g = 0.4), plus the
-stated regime "n ~ 200, CGR ~ 0.7, treatment effect ~ 0.4 Hedges' g", are now
-confirmed against the actual paper and all match `noise = "all"` (0.4011), not
-`noise = "arm"` (0.50). This upgrades the resolution from "recollection" to
-"matches the published operating characteristics".
-**Still open:** the exact Eq. 4 SD scope lives in the paper's Supplementary
-Table 1, which was not in the supplied PDFs, so this is not yet a line-by-line
-code check. Ask the author for the AEB simulation code to close it fully.
+## U4  Szigeti's generative source code   [RESOLVED 2026-07-21 - located]
+The code was named in the 2023 paper's data-availability statement all along, at
+`github.com/szb37/CorrectGuessRateCurve`; earlier turns probed the *data* mirror
+`szb37/mcrds_public` instead and wrongly reported it not located.
+**Confirmed from source (SOURCES.md S4):** `get_strata_ratio` /
+`get_strata_sample_sizes` form `r = PLPL/(PLPL+ACAC)` and `s = ACPL/(ACPL+PLAC)`,
+identical to this implementation - independent confirmation of the estimand.
+The default `strata_sampling = 'all_prop'` confirms the `noise = "all"` reading
+(CH-04), matching published Table 1 (0.05/0.86/0.78/0.99) and Hedges g = 0.4.
+Two documentation corrections followed (both in CHANGELOG CH-16): the resample
+count is 32/13-grid, not 100; and `get_strata_ratio` does `round(x, 2)`, so
+`legacy_round = TRUE` is the faithful reproduction path.
+**Residual:** the exact AEB-simulation SD scope (Eq. 4) was not re-derived
+line-by-line from the simulation module; the operating-characteristic match is
+strong enough that this is low priority.
+
+## U9  Guess rates are reversed vs the author's stated pattern   [for the author]
+Szigeti & Heifets (2024, S3) state correct guess rates are "generally higher in
+the active arms". In this dataset the pattern is the **reverse**: the placebo
+arm guesses correctly at 0.723 and the active (microdose) arm at only 0.528
+(Rmd Section 10). It is driven by a response bias toward guessing "placebo"
+(9508 placebo vs 6115 microdose guesses across the dataset), so participants on
+placebo are "right" far more often than those on microdose. This does not break
+the estimand - the CGRC conditions on the observed strata through r and s - but
+it contradicts the generalisation in the review and is worth raising with the
+author, because it changes the intuition for which arm expectancy inflates.
 
 ## U5  No head-to-head operating-characteristic comparison
 Section 9 characterises the adjusted ESTIMAND under the AEB model. It does not
