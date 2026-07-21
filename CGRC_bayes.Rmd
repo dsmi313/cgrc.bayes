@@ -454,12 +454,13 @@ par(mfrow = c(1, 1))
 
 ## Figure 4 reproduced: the microdose trial
 
-The empirical panels. The green line is drawn at **0.72** because that is where
-the published figure and the author's code (`trial_cgrs = {'sbmd': 0.72}`) put
-it — the reference-line test below shows why that position is worth checking.
-Cognitive performance is the negative control: flat in both curves, because it is
-measured by objective tasks rather than self-report, so it should carry no
-expectancy signal.
+The empirical panels. The green line is drawn at **0.72** to match the original
+figure — but do not read it as the trial's guess rate: it is a hardcoded constant
+(`trial_cgrs = {'sbmd': 0.72}`), and the reference-line test below shows the
+curve does **not** equal the paper's reported unadjusted estimate at 0.72 (it
+does at the computed 0.647). Cognitive performance is the negative control: flat
+in both curves, because it is measured by objective tasks rather than
+self-report, so it should carry no expectancy signal.
 
 ```{r repro-fig4, cache=TRUE, fig.height=8, fig.width=10}
 set.seed(404)

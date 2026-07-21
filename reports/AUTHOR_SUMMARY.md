@@ -29,13 +29,23 @@ implying otherwise.
 
 **The 0.72, resolved from your code.** I eventually found
 `CorrectGuessRateCurve` (it was in your data-availability statement - I had been
-looking in `mcrds_public`). `config.py` has `trial_cgrs = {'sbmd': 0.72}` as a
-hardcoded constant, and that is what draws the Figure 4 green line, while the
-code separately computes the trial CGR from the data as 0.647. So the line sits
-at 0.72 by annotation, not at the data's guess rate. It happens to equal the
-placebo-arm correct-guess rate (0.7234); the microdose arm is only 0.5275. It
-does not affect any estimate, but the line and the computed CGR disagree, so it
-may be worth a footnote.
+looking in `mcrds_public`). The finding is four lines from your own repo:
+
+```python
+# core.py:181  — feeds the comparison table
+trial_cgr = (n_plpl+n_acac)/tmp_trial_data.shape[0]   # = 0.647, rounds to 0.65
+
+# figures.py:493 — draws the green line (cgr <- config.trial_cgrs['sbmd'] = 0.72)
+ax1.axvline(x=cgr, color='green', ls='--')  # Vertical line, empirical CGR
+```
+
+The same run computes the empirical CGR as 0.647 for the table, but the green
+line is drawn at the hardcoded constant 0.72 - and the comment on that line even
+calls it "empirical CGR". So the annotation and the computed value disagree.
+0.72 happens to equal the placebo-arm correct-guess rate (0.7234; the microdose
+arm is only 0.5275), which is probably where the constant came from. It does not
+affect any estimate, but Figure 4's reference line is not the trial's guess rate,
+so it is worth a correction or a footnote.
 
 **One thing I still could not resolve.** You report n = 233 for week 1; the
 public file gives me 232 on every acute scale, with no duplicate trial IDs and
