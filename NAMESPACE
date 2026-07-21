@@ -1,0 +1,40 @@
+# Hand-maintained. All internal calls to other packages are fully namespaced
+# (stats::, ggplot2::), so no imports are declared here - only exports.
+
+export(STRATA)
+
+# estimand (R/01_estimand.R)
+export(cgr_strata)
+export(cgr_observed)
+export(cgr_ratios)
+export(cgr_weights)
+export(cgr_delta)
+export(cgr_sizes)
+export(cgr_analytic)
+export(cgr_ratio_draws)
+export(cgr_reference_line_test)
+
+# conjugate posterior (R/02_bayes.R)
+export(nig_draws)
+export(cgr_conjugate)
+
+# JAGS backend (R/03_jags.R)
+export(jags_model_string)
+export(cgr_jags)
+export(cgr_check_backends)
+
+# KDE port (R/04_kde.R)
+export(cgr_kde)
+export(cgr_kde_ladder)
+
+# simulation study (R/05_sim.R)
+export(sim_aeb)
+export(cgr_operating)
+
+# plotting and summaries (R/06_plot.R)
+export(cgr_plot)
+export(cgr_summary_table)
+
+# region of practical equivalence (R/07_rope.R)
+export(cgr_rope)
+export(cgr_rope_sensitivity)

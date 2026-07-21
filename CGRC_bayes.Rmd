@@ -18,8 +18,10 @@ knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE,
 options(width = 100)
 set.seed(20260721)
 
-for (f in list.files("R", pattern = "[.]R$", full.names = TRUE)) source(f)
-
+# This vignette consumes the installed cgrc.bayes package (build + install with
+# `R CMD INSTALL .` from the repo root, or `devtools::install()`), rather than
+# sourcing R/ directly. Every cgr_* and nig_draws() call below is the package's.
+library(cgrc.bayes)
 library(ggplot2)
 
 GRID    <- seq(0, 1, length.out = 101)
@@ -345,17 +347,19 @@ adds no information about participants. The data contain 232 people whatever
 
 # R implementation
 
-Implementation lives in `R/` and is sourced above, so this document is a
-vignette rather than the only copy of the code.
+The implementation is the installed **`cgrc.bayes`** package (loaded in the
+setup chunk with `library(cgrc.bayes)`), so this document is a vignette rather
+than the only copy of the code. The package is built from these modules:
 
 | File | Contents |
 |---|---|
-| `R/01_estimand.R` | strata, ratios, weights, $\Delta(c)$, analytic curve |
+| `R/01_estimand.R` | strata, ratios, weights, $\Delta(c)$, analytic curve, `cgr_reference_line_test()` |
 | `R/02_bayes.R` | `nig_draws()`, conjugate posterior curve |
 | `R/03_jags.R` | corrected JAGS model, backend check |
 | `R/04_kde.R` | faithful port of the original KDE procedure |
 | `R/05_sim.R` | AEB generative model, operating characteristics |
 | `R/06_plot.R` | figures and summary tables |
+| `R/07_rope.R` | `cgr_rope()` region-of-practical-equivalence decomposition |
 
 Core functions, unfolded because they are short and load-bearing:
 
@@ -404,6 +408,42 @@ do.call(rbind, lapply(names(sb), function(nm) {
              abs_error = abs(g - w), pass = abs(g - w) < 1e-10)
 }))
 ```
+
+## The reference-line test
+
+The identity above makes the position of the reference line *checkable* rather
+than decorative: since $\Delta(c_{obs})$ equals the paper's own reported
+unadjusted estimate, a line drawn at some claimed CGR is only in the right place
+if $\Delta$ there equals that value. The paper's Figure 4 draws its "original
+CGR" line at **0.72** (Fig 4 caption; see `reports/SOURCES.md`), so this tests
+0.72 against the computed observed CGR.
+
+```{r val-refline}
+pub_unadj <- c(PANAS = 3.2, `Mood VAS` = 6.4, `Energy VAS` = 11.5,
+               `Cognitive performance` = 0.0)
+do.call(rbind, lapply(names(sb), function(nm) {
+  z <- cgr_reference_line_test(sb[[nm]], orig_cgr = 0.72,
+                               published_unadj = pub_unadj[[nm]])
+  data.frame(outcome = nm,
+             published_unadj = z$published_unadj,
+             computed_obs_cgr = round(z$computed_obs_cgr, 4),
+             D_at_obs = round(z$D_at_obs, 2),
+             err_at_obs = round(z$err_at_obs, 2),
+             D_at_0.72 = round(z$D_at_orig_cgr, 2),
+             err_at_0.72 = round(z$err_at_orig, 2))
+}))
+```
+
+Read `err_at_obs` against `err_at_0.72`. At the computed CGR of 0.647 the curve
+lands on the paper's own reported unadjusted values to within ~0.12; at 0.72 it
+overshoots them by 1.0–2.1 points on the three self-report scales. So the green
+line as drawn is **not** the point where the curve equals the reported
+unadjusted estimate — the signature of a misplaced reference line. It does not
+by itself say *why*: 0.72 equals the placebo-arm correct-guess rate (0.7234,
+Section 10), the line may have been read off a raster as 0.70 rather than 0.72,
+or the figure and table may use slightly different subsets. That is for the
+author, and is not to be settled by picking the flattering reading (see
+`reports/UNRESOLVED.md` U3).
 
 ## Original KDE procedure vs the analytic curve
 
@@ -730,6 +770,108 @@ Unequal stratum variances are handled by construction — each stratum has its o
 $\sigma_j^2$, so no homoscedasticity assumption is imposed across strata. A
 Student-$t$ likelihood sensitivity requires JAGS (`cgr_jags(likelihood = "t")`)
 and is **not run here** when rjags is absent.
+
+---
+
+# A region of practical equivalence
+
+The lower panel of Section 10 reports $P(\Delta(c) > 0 \mid y)$. As an
+inferential summary a direction probability — like the two-sided tail it
+replaced — has two defects. It is **magnitude-blind**: a tiny, precisely
+estimated effect and a large, uncertain one can score identically. And it
+**conflates two states of knowledge**: a probability near 0.5 can mean "the
+posterior is concentrated near zero, so the effect is negligible" or "the
+posterior is diffuse, so we have learned nothing" — opposite conclusions the
+statistic cannot separate. For a method whose whole purpose is asking whether an
+apparent effect *survives* adjustment, that is the distinction that matters.
+
+The fix is not a Bayes factor against $\Delta = 0$: with the vague default prior
+($k_0 = 10^{-6}$) it depends on the prior width without limit — the
+Jeffreys–Lindley paradox — so it would measure the prior, not the data. Instead
+declare a band $[-\delta, +\delta]$ of practically-negligible effects and report
+the three exhaustive probabilities
+
+$$P(\Delta < -\delta), \qquad P(|\Delta| \le \delta), \qquad P(\Delta > +\delta),$$
+
+which sum to 1 and whose middle term separates "negligible" from "uninformative".
+The cost — $\delta$ must be declared — is a feature: it forces the
+practical-significance question into the open. The default is
+$\delta = 0.1 \times$ the outcome's pooled SD.
+
+```{r rope-run, cache=TRUE}
+set.seed(31)
+rope <- lapply(sb, cgr_rope, n_draws = N_DRAWS, direction = 1)
+do.call(rbind, lapply(names(sb), function(nm) {
+  z <- rope[[nm]]; o <- cgr_observed(cgr_strata(sb[[nm]]))
+  do.call(rbind, lapply(list(c(o, 0), c(0.5, 1)), function(tt) {
+    a <- z[which.min(abs(z$cgr - tt[1])), ]
+    data.frame(outcome = nm,
+               at = if (tt[2] == 0) "observed CGR" else "CGR 0.50",
+               ROPE_delta = round(a$delta, 2),
+               post_mean = round(a$est, 3),
+               P_harm = round(a$p_harm, 3),
+               P_negligible = round(a$p_negligible, 3),
+               P_benefit = round(a$p_benefit, 3))
+  }))
+}))
+```
+
+Read the `CGR 0.50` rows. For **PANAS**, adjustment leaves roughly a 40% chance
+the effect is practically negligible against roughly a 50% chance it is
+meaningfully positive — genuine uncertainty, not a demonstrated null; reporting
+"not significant" there would be a misreading. For **Energy VAS**, the
+probability of a meaningful benefit stays high even after adjustment. For
+**cognitive performance**, the mass is spread across all three regions — the
+honest description of a small study with a small ROPE: uninformative rather than
+null.
+
+```{r rope-plot, cache=TRUE, fig.height=4.2}
+stack <- do.call(rbind, lapply(names(sb), function(nm) {
+  z <- rope[[nm]]
+  do.call(rbind, lapply(c("p_benefit", "p_negligible", "p_harm"), function(k)
+    data.frame(cgr = z$cgr, outcome = nm, p = z[[k]], region = k,
+               obs = cgr_observed(cgr_strata(sb[[nm]])))))
+}))
+stack$outcome <- factor(stack$outcome, levels = names(SCALES))
+stack$region  <- factor(stack$region,
+  levels = c("p_benefit", "p_negligible", "p_harm"),
+  labels = c("meaningful benefit", "practically negligible", "meaningful harm"))
+
+ggplot(stack, aes(cgr, p, fill = region)) +
+  geom_area(position = "stack") +
+  geom_vline(xintercept = 0.5, linetype = "dashed", colour = "black") +
+  geom_vline(aes(xintercept = obs), linetype = "dashed", colour = "darkgreen") +
+  scale_fill_manual(values = c("meaningful benefit" = "#2471A3",
+                               "practically negligible" = "grey75",
+                               "meaningful harm" = "#C0392B")) +
+  scale_y_continuous(expand = c(0, 0)) +
+  facet_wrap(~ outcome, nrow = 1) +
+  labs(x = "Correct guess rate (CGR)", y = "posterior probability", fill = NULL,
+       title = "ROPE decomposition of the CGR-adjusted effect",
+       subtitle = paste("regions are exhaustive and sum to 1 at every CGR;",
+                        "black = perfect blinding, green = observed CGR")) +
+  theme_minimal(base_size = 10) +
+  theme(legend.position = "bottom", panel.grid.minor = element_blank())
+```
+
+**Sensitivity to the width.** A region-based conclusion is only as robust as the
+region, so vary $\delta$ from 0.05 to 0.30 SD at CGR 0.50:
+
+```{r rope-sens, cache=TRUE}
+set.seed(41)
+do.call(rbind, lapply(names(sb), function(nm) {
+  s <- cgr_rope_sensitivity(sb[[nm]], at_cgr = 0.5, n_draws = 12000)
+  data.frame(outcome = nm, delta_in_SD = s$delta_in_SD,
+             delta = round(s$delta, 2),
+             P_negligible = round(s$p_negligible, 3),
+             P_benefit = round(s$p_benefit, 3))
+}))
+```
+
+Energy VAS is the only outcome whose conclusion is stable across every width —
+the probability of a meaningful benefit stays high even at $\delta = 0.3$ SD.
+PANAS and Mood VAS flip from "probably meaningful" to "probably negligible" as
+$\delta$ widens, exactly the fragility a single tail number would have concealed.
 
 ---
 

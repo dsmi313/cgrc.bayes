@@ -3,6 +3,10 @@ CGRC_bayes.html
 CGRC_bayes_cache/
 CGRC_bayes_files/
 
+# R package build artefacts
+*.tar.gz
+..Rcheck/
+
 # R session artefacts
 .Rhistory
 .RData

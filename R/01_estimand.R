@@ -77,3 +77,36 @@ cgr_ratio_draws <- function(st, n_draws, alpha = 1) {
   list(r = stats::rbeta(n_draws, n[["PLPL"]] + alpha, n[["ACAC"]] + alpha),
        s = stats::rbeta(n_draws, n[["ACPL"]] + alpha, n[["PLAC"]] + alpha))
 }
+
+# The reference-line test.
+#
+# Property P1: at the observed CGR the reweighting is a no-op, so Delta(c_obs)
+# equals the raw active-minus-placebo mean difference - the unadjusted estimate
+# a paper reports in its own table. That makes a reference line drawn at some
+# claimed CGR *checkable* rather than decorative: it is only in the right place
+# if Delta there equals that unadjusted value.
+#
+# Given a claimed reference CGR (orig_cgr) and, optionally, the published
+# unadjusted value, this returns Delta at the computed observed CGR and at the
+# claimed CGR, with the errors against the published value. A large err_at_orig
+# with a near-zero err_at_obs is the signature of a misplaced reference line -
+# the exact failure the observed-CGR identity exists to catch (see
+# reports/UNRESOLVED.md U3 for the microdose trial's 0.72 case).
+cgr_reference_line_test <- function(df, orig_cgr, published_unadj = NA_real_) {
+  st  <- cgr_strata(df); rat <- cgr_ratios(st); mu <- lapply(st, mean)
+  o   <- cgr_observed(st)
+  raw <- mean(df$value[df$condition == "AC"]) -
+         mean(df$value[df$condition == "PL"])
+  d_obs  <- cgr_delta(o,        mu, rat$r, rat$s)
+  d_orig <- cgr_delta(orig_cgr, mu, rat$r, rat$s)
+  data.frame(
+    computed_obs_cgr = o,
+    D_at_obs         = d_obs,
+    raw_mean_diff    = raw,
+    published_unadj  = published_unadj,
+    orig_cgr         = orig_cgr,
+    D_at_orig_cgr    = d_orig,
+    err_at_obs       = d_obs  - published_unadj,
+    err_at_orig      = d_orig - published_unadj,
+    stringsAsFactors = FALSE)
+}

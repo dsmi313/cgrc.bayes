@@ -1,0 +1,15 @@
+^data$
+^data-raw$
+^reports$
+^.*\.Rmd$
+^.*\.html$
+^CGRC_bayes_cache$
+^CGRC_bayes_files$
+^00_BRIEF\.md$
+^README\.md$
+^\.git$
+^\.gitignore$
+^.*\.tar\.gz$
+^.*\.Rproj$
+^\.Rproj\.user$
+^plans$

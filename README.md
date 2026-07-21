@@ -24,25 +24,32 @@ guessing happened* changes, never *who got what*.
 | `R/04_kde.R` | faithful port of the original KDE resampling procedure |
 | `R/05_sim.R` | AEB generative model and operating-characteristics study |
 | `R/06_plot.R` | figures and summary tables |
-| `tests/testthat/` | estimand + reproduction test suites |
+| `R/07_rope.R` | `cgr_rope()` region-of-practical-equivalence decomposition |
+| `DESCRIPTION`, `NAMESPACE` | R package metadata (`cgrc.bayes`) |
+| `tests/testthat/` | estimand + reproduction + rope test suites |
 | `data-raw/download_data.R` | fetch + checksum-verify the public data |
 | `data/pacutes.csv` | pinned public dataset (SHA-256 in `PROVENANCE.txt`) |
 | `00_BRIEF.md` | the design brief, corrections list, and empirical findings |
 | `reports/` | changelog, unresolved items, test status, audit, plain-language, sources |
 
-## Reproduce it
+## Install and reproduce
+
+The code is an installable R package, `cgrc.bayes`; the writeup is a vignette
+that consumes it via `library(cgrc.bayes)`.
 
 ```sh
 # system: R (>= 4.3), pandoc, and JAGS (>= 4.3) for the backend check
+R CMD INSTALL .                           # install the cgrc.bayes package
 Rscript data-raw/download_data.R          # fetch + verify data/pacutes.csv
 Rscript -e 'rmarkdown::render("CGRC_bayes.Rmd")'
-Rscript tests/testthat.R                  # 297 pass / 0 fail / 0 skip
+Rscript tests/testthat.R                  # runs the testthat suite (source, no install needed)
 ```
 
 R package dependencies: `ggplot2`, `digest`, `testthat`, `knitr`, `rmarkdown`,
 and — for the backend check — `rjags` + `coda` (needs a system JAGS install).
 Without JAGS the render still completes; the conjugate-vs-JAGS check is skipped
-and reported as not run.
+and reported as not run. The test suite sources `R/` directly, so it does not
+require the package to be installed first.
 
 ## Status of this reproduction
 
