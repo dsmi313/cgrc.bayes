@@ -1150,6 +1150,43 @@ estimand.
 
 ---
 
+# Using this on your own trial
+
+Szigeti et al. (2023) close their limitations with a request:
+
+> "Researchers wishing to use CGR adjustment should first run simulations to
+> determine whether CGR produces acceptable error rates for the parameters of
+> their data and the application in mind."
+
+That tool is `cgr_operating()`, and it is why this is a package rather than a
+one-off script. Two calls cover both halves of that sentence — adjust your
+trial, and first check whether the adjustment is even trustworthy for *your*
+design:
+
+```{r own-trial, eval=FALSE}
+library(cgrc.bayes)
+
+# 1. Adjust your own trial. `my_trial` needs three columns: condition (AC/PL),
+#    guess (AC/PL), value. Returns the curve, the estimate at perfect blinding
+#    (CGR 0.50) and the posterior probability the effect is favourable.
+cgrc(my_trial)
+
+# 2. "...first run simulations to determine whether CGR produces acceptable
+#    error rates for the parameters of my data": bias, RMSE, 95% coverage and
+#    false-favourable rate at MY sample size, guess rate and effect size.
+cgr_operating(n = 120, p_cg = 0.85, n_trials = 500)
+```
+
+The first line gives the adjusted estimate; the second answers whether CGR
+adjustment is safe to apply at all for a trial of that size and blinding quality
+— Section 9 ran exactly this at $n = 230$, and it is where you would check that
+coverage is near 0.95 and the false-favourable rate is controlled before
+trusting the adjustment on your own data. Installation, the JAGS backend, the
+robust likelihood, the ROPE summary and the full function list live in the
+repository README; this section is only the front door.
+
+---
+
 # Unresolved questions
 
 1. **Corrected JAGS prior.** `r jags_resolution`

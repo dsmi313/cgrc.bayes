@@ -25,6 +25,18 @@ test_that("pct_attenuation is reported when the unadjusted CrI excludes zero", {
   expect_false(is.na(tab$pct_attenuation[2]))
 })
 
+test_that("cgrc() returns a summarised, printable adjusted analysis", {
+  set.seed(1)
+  d <- sim_aeb(300, dte_on = TRUE)
+  res <- cgrc(d, n_draws = 4000)
+  expect_s3_class(res, "cgrc")
+  expect_named(res, c("curve", "summary", "observed_cgr"))
+  # the curve includes the EXACT observed CGR, so no grid-snapping
+  expect_true(any(abs(res$curve$cgr - res$observed_cgr) < 1e-12))
+  expect_equal(nrow(res$summary), 2)              # observed + perfect blinding
+  expect_output(print(res), "CGRC-adjusted analysis")
+})
+
 test_that("cgr_summary_table warns when the grid does not contain the target", {
   cur <- make_cur(data.frame(est = 3.2, lo = 0.7, hi = 5.7), obs_cgr = 0.65)
   # asking for 0.6466 when the grid only has 0.65 must warn (grid-snapping)

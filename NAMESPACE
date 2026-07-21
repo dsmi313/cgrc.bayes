@@ -40,3 +40,8 @@ export(szigeti_panel)
 # region of practical equivalence (R/07_rope.R)
 export(cgr_rope)
 export(cgr_rope_sensitivity)
+
+# front door (R/08_frontdoor.R)
+export(cgrc)
+S3method(print, cgrc)
+S3method(plot, cgrc)

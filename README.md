@@ -13,6 +13,47 @@ blinding had held?* It reweights the four treatment × guess strata to a target
 guess rate while holding the within-class arm ratios fixed, so only *how much
 guessing happened* changes, never *who got what*.
 
+## Use it on your own trial
+
+Szigeti et al. (2023) ask, in their limitations, that "researchers wishing to use
+CGR adjustment should first run simulations to determine whether CGR produces
+acceptable error rates for the parameters of their data." This package is that
+tool.
+
+```r
+# install once from the repo root:  R CMD INSTALL .
+library(cgrc.bayes)
+
+# your data: one row per participant, columns condition (AC/PL), guess (AC/PL), value
+cgrc(my_trial)                                    # adjusted estimate + curve
+plot(cgrc(my_trial))                              # the effect + P(favourable) figure
+
+# BEFORE trusting it: is CGR adjustment safe for a trial of MY size / blinding?
+cgr_operating(n = 120, p_cg = 0.85, n_trials = 500)   # bias, RMSE, coverage, error rates
+```
+
+`cgrc()` returns the CGR-adjusted estimate (at perfect blinding, CGR 0.50), a
+95% credible interval, and the posterior probability the effect is favourable.
+`cgr_operating()` runs the pre-flight simulation study the paper asks for, at
+your sample size, guess rate and effect size. For outcomes where lower is
+better (e.g. depression scores) pass `direction = -1`.
+
+## Function reference
+
+| Function | Purpose |
+|---|---|
+| `cgrc(df)` | one-call adjuster: curve + estimate at CGR 0.50 + P(favourable) |
+| `cgr_operating(n, p_cg, ...)` | pre-flight simulation: bias, RMSE, 95% coverage, error rates |
+| `cgr_conjugate(df, grid)` | full Normal-Inverse-Gamma posterior curve over a CGR grid |
+| `cgr_jags(df, likelihood)` | JAGS backend; `"normal"` or robust `"t"` likelihood |
+| `cgr_check_backends(df)` | verify the conjugate and JAGS posteriors agree |
+| `cgr_rope(df)` | region-of-practical-equivalence decomposition (harm/negligible/benefit) |
+| `cgr_kde(df, cgr)`, `cgr_kde_curve(df)` | faithful port of the original KDE resampling |
+| `cgr_reference_line_test(df, orig_cgr)` | check a reference line against the observed-CGR identity |
+| `szigeti_panel(cgr_kde_curve(df), ...)` | reproduce the published twin-axis figure |
+| `cgr_strata`, `cgr_ratios`, `cgr_weights`, `cgr_delta` | the estimand primitives |
+| `sim_aeb(...)` | the activated-expectancy-bias generative model |
+
 ## What's here
 
 | Path | Contents |
