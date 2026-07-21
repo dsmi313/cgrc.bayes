@@ -20,23 +20,41 @@ CGR adjustment should first run simulations to determine whether CGR produces
 acceptable error rates for the parameters of their data." This package is that
 tool.
 
+**Try it right now** — no data file needed; `sim_aeb()` makes a fake unblinded
+trial you can adjust immediately after `R CMD INSTALL .`:
+
 ```r
-# install once from the repo root:  R CMD INSTALL .
 library(cgrc.bayes)
+demo <- sim_aeb(n = 230, p_cg = 0.7, dte_on = TRUE)   # simulated trial
+cgrc(demo)                                            # adjusted estimate + curve
+plot(cgrc(demo))                                      # the effect + P(favourable) figure
+```
 
-# your data: one row per participant, columns condition (AC/PL), guess (AC/PL), value
-cgrc(my_trial)                                    # adjusted estimate + curve
-plot(cgrc(my_trial))                              # the effect + P(favourable) figure
+**On your own data.** `cgrc()` needs one row per participant and exactly three
+columns — `condition` (AC/PL), `guess` (AC/PL) and `value`. Build that data
+frame however you like, e.g. from a CSV:
 
-# BEFORE trusting it: is CGR adjustment safe for a trial of MY size / blinding?
-cgr_operating(n = 120, p_cg = 0.85, n_trials = 500)   # bias, RMSE, coverage, error rates
+```r
+d <- read.csv("my_trial.csv")
+my_trial <- data.frame(
+  condition = ifelse(d$arm   == "drug",  "AC", "PL"),   # active / placebo
+  guess     = ifelse(d$guess == "drug",  "AC", "PL"),   # guessed active / placebo
+  value     = d$outcome
+)
+cgrc(my_trial)                        # for lower-is-better outcomes: cgrc(my_trial, direction = -1)
+```
+
+**Before trusting it** — the pre-flight simulation the paper asks for, at *your*
+sample size, guess rate and effect size:
+
+```r
+cgr_operating(n = 120, p_cg = 0.85, n_trials = 500)   # bias, RMSE, 95% coverage, error rates
 ```
 
 `cgrc()` returns the CGR-adjusted estimate (at perfect blinding, CGR 0.50), a
 95% credible interval, and the posterior probability the effect is favourable.
-`cgr_operating()` runs the pre-flight simulation study the paper asks for, at
-your sample size, guess rate and effect size. For outcomes where lower is
-better (e.g. depression scores) pass `direction = -1`.
+`cgr_operating()` tells you whether that adjustment is trustworthy for a trial of
+that size and blinding quality in the first place.
 
 ## Function reference
 
