@@ -141,10 +141,12 @@ SOURCES.md S4). Consequences:
   the reference line.
 - **Estimand confirmed independently**: the code's r and s formulas are
   identical to this implementation - settles U4.
-- **"100 times" corrected**: `cgrC_low` uses `n_cgrc_trials = 32` over
-  `np.linspace(0, 1, 13)` (options 32/64/96, never 100). Real Monte Carlo error
-  is ~1.8x the 100-resample value. Section 2 and the KDE ladder updated
-  (32 added).
+- **"100 times" qualified**: the repo's Figure-4 config `cgrC_low` specifies
+  `n_cgrc_trials = 32` over `np.linspace(0, 1, 13)` (options 32/64/96, never
+  100). Stated as the repo's configuration, not proof of the final figure - the
+  repo tracks the preprint and the Figure-4 block is behind `if False:`. If the
+  count is 32 the Monte Carlo error is ~1.8x the 100-resample value. Section 2
+  and the KDE ladder updated (32 added).
 - **legacy_round is the faithful reproduction**: `get_strata_ratio` does
   `round(x, 2)`, so `legacy_round = TRUE` reproduces Szigeti's numbers
   (+0.010 PANAS, +0.019 Energy). Documented in Section 8; the exact ratios

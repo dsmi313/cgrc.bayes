@@ -45,6 +45,37 @@ cgr_kde <- function(df, cgr, n_rep = 100, bw = 1.0) {
        p = mean(pval), n_rep = n_rep, draws = est)
 }
 
+# Full KDE curve in the ORIGINAL procedure's own terms, for reproducing the
+# published twin-axis figures (see szigeti_panel). For each grid CGR it returns
+# the mean estimate and mean p-value across n_rep resamples, plus the
+# across-resample SD used for the +/- 1 SD bands. The default 13-point grid
+# matches the author's config (np.linspace(0, 1, 13)); the paper's bands are not
+# defined in the text, so +/- 1 SD across resamples is used and labelled as such.
+cgr_kde_curve <- function(df, grid = seq(0, 1, length.out = 13),
+                          n_rep = 80, bw = 1.0) {
+  st <- cgr_strata(df)
+  do.call(rbind, lapply(grid, function(cc) {
+    nk <- cgr_sizes(st, cc)
+    e <- p <- numeric(n_rep)
+    for (i in seq_len(n_rep)) {
+      ys <- list(); tr <- list()
+      for (k in STRATA) {
+        m <- nk[[k]]; if (m <= 0) next
+        ys[[k]]  <- rkde(st[[k]], m, bw)
+        tr[[k]] <- rep(substr(k, 1, 2) == "AC", m)
+      }
+      y <- unlist(ys, use.names = FALSE); t <- unlist(tr, use.names = FALSE)
+      if (sum(t) < 2 || sum(!t) < 2) { e[i] <- NA; p[i] <- NA; next }
+      e[i] <- mean(y[t]) - mean(y[!t])
+      p[i] <- stats::t.test(y[t], y[!t], var.equal = TRUE)$p.value
+    }
+    data.frame(cgr = cc, est = mean(e, na.rm = TRUE),
+               est_sd = stats::sd(e, na.rm = TRUE),
+               p = mean(p, na.rm = TRUE), p_sd = stats::sd(p, na.rm = TRUE),
+               stringsAsFactors = FALSE)
+  }))
+}
+
 # Separates the three sources of difference between original and Bayesian:
 #   (a) Monte Carlo noise from using only 100 resamples
 #   (b) KDE vs a Gaussian stratum model

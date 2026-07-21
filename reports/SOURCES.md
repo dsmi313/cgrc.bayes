@@ -20,8 +20,10 @@ Fig 4 (the empirical CGR curves). Facts confirmed against it during this work:
   datapoint is independent... In the current analysis n = 233 datapoints were
   included." Confirms the `tp == "w1s1"` filter; the public file gives 232.
 - **The 0.72 CGR (U3).** Fig 4 caption: "vertical green dashed line corresponds
-  to the trial's original CGR (= 0.72)". Shown here to be the placebo-arm rate
-  (0.7234), not the overall CGR (0.647).
+  to the trial's original CGR (= 0.72)". The source code (S4) shows this is a
+  **hardcoded constant** (`trial_cgrs = {'sbmd': 0.72}`), not the data's CGR
+  (0.647); its value most likely originates from the placebo-arm rate (0.7234),
+  which is the one part still a hypothesis.
 - **`noise = "all"` (U4).** Table 1 rates 0.05 / 0.86 / 0.78 / 0.99 and DTE
   Hedges g = 0.4; stated regime "n ~ 200, CGR ~ 0.7, effect ~ 0.4 Hedges' g".
   All match `noise = "all"`. The exact Eq. 4 SD scope is in the paper's
@@ -55,8 +57,9 @@ Szigeti B, Heifets BD. **"Expectancy Effects in Psychedelic Trials."**
 Same-author review. Used here for two facts that bear on U3 and U6:
 
 - The microdose correct-guess rate is "only ~65% to 70%" (a truly blind trial is
-  ~50%) - consistent with the public data's 0.647, not with the 0.72 in the 2023
-  Fig 4 caption. Supports the reading that 0.72 is the placebo-conditional rate.
+  ~50%) - consistent with the public data's 0.647, not with the hardcoded 0.72
+  in the 2023 Fig 4 line. (The code, S4, is the primary evidence that 0.72 is a
+  fixed constant; this review just corroborates that the real rate is ~65-70%.)
 - Microdose effects fall below the 0.5-SMD minimally-important difference,
   "too small to be noticeable" - reinforces the U6 magnitude argument.
 
@@ -81,10 +84,15 @@ corrects two document claims:
   `r = PLPL / (PLPL + ACAC)` and `s = ACPL / (ACPL + PLAC)` — identical to this
   implementation — and the default `strata_sampling = 'all_prop'` confirms the
   `noise = "all"` reading (CH-04).
-- **Resample count (corrects "100 times").** `config.py` `cgrC_low` uses
-  `n_cgrc_trials = 32` over `np.linspace(0, 1, 13)` (options 32/64/96, never
-  100). The empirical Figure 4 used 32 resamples across 13 grid points, so the
-  real Monte Carlo error is ~1.8x a 100-resample assumption.
+- **Resample count (qualifies "100 times").** The repo's Figure-4 config
+  `cgrC_low` (`config.py`) specifies `n_cgrc_trials = 32` over
+  `np.linspace(0, 1, 13)` (options 32/64/96, never 100). Two caveats: the repo's
+  README says it reproduces the **preprint** ("On the fallibility of the placebo
+  control...", a different title, then under review), so the config may be
+  preprint-era; and the Figure-4 block in `run.py` sits inside `if False:`. So
+  this is the repository's stated configuration, not proof of what generated the
+  final published figure. If the real count is 32, the Monte Carlo error is
+  ~1.8x a 100-resample assumption.
 - **Rounding (documents the reproduction default).** `get_strata_ratio` does
   `round(x, 2)` on every stratum proportion, so `legacy_round = TRUE` is the
   faithful reproduction path (+0.010 PANAS, +0.019 Energy vs the exact ratios).

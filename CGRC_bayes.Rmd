@@ -33,6 +33,34 @@ has_jags <- requireNamespace("rjags", quietly = TRUE) &&
 
 # Research question and executive summary
 
+## In plain terms (read this first)
+
+You run a drug trial. Half the people get the real drug, half get a placebo, and
+nobody is told which. At the end you ask everyone to guess — and about 65% guess
+right. That is a problem: people who *believe* they got the real drug tend to
+feel better simply because they believe it, and since more of the drug group
+correctly believe they got the drug, this "belief bonus" piles up unevenly on the
+drug side. Some of the drug's apparent benefit is really just that unevenness.
+
+The **Correct Guess Rate Curve (CGRC)** asks a what-if: *what would this trial
+have shown if only 50% had guessed right* — the coin-flip you'd see if the
+blinding had actually worked? You can't rerun the trial, but you can re-weight the
+people you already have so the maths reflects 50%-correct guessing, then re-take
+the difference between the two groups. That re-weighted difference is the CGRC
+estimate.
+
+This document does two things: (1) it **reproduces** that method on a real
+microdosing dataset, and (2) it offers a **Bayesian** version that reports the
+answer as a *range with a probability attached* ("the effect is 1.1 points, and
+there's a 79% chance it's positive") instead of a single number plus a p-value.
+It is **not** claimed to be a better answer — it targets the same quantity — just
+a more honest way of showing the uncertainty. Along the way it checks the
+original paper's arithmetic, finds and fixes a few small errors on both sides,
+and flags what still needs the original author. Every number below is computed by
+the code shown, not asserted.
+
+## The technical version
+
 Blinding is supposed to distribute expectancy effects equally between arms. If
 patients can work out their allocation and expect the active arm to help, that
 distribution becomes unequal and the trial tilts toward the active treatment.
@@ -82,16 +110,19 @@ Steps 3–5 are the part this document replaces. Steps 1–2 define the estimand
 and are retained exactly.
 
 **A note on the resample count.** The paper's text (Fig 2 caption) says the
-KDE sampling is "repeated 100 times". The author's published source code
+KDE sampling is "repeated 100 times". The author's source repository
 ([`szb37/CorrectGuessRateCurve`](https://github.com/szb37/CorrectGuessRateCurve),
-`src/config.py`) tells a different story: the CGR *curve* configuration
-`cgrC_low` uses `n_cgrc_trials = 32` over `np.linspace(0, 1, 13)` — **32
-resamples across 13 CGR grid points**, not 100 across a fine grid (the
-`n_cgrc_trials` options are 32/64/96, never 100). So the empirical Figure 4 was
-produced with 32 resamples. Because Monte Carlo error scales as
-$1/\sqrt{n_{\text{rep}}}$, the real error is about $\sqrt{100/32} \approx 1.8\times$
-larger than a 100-resample assumption. Section 8 quantifies it directly and
-includes 32 in the ladder.
+`src/config.py`) tells a different story: its **Figure 4 configuration**
+(`cgrC_low`) specifies `n_cgrc_trials = 32` over `np.linspace(0, 1, 13)` — 32
+resamples across 13 CGR grid points (the options are 32/64/96, never 100). Two
+caveats keep this from being airtight: the repo states it reproduces the
+*preprint* (a different title, then under peer review), so the config may be
+preprint-era rather than what generated the final published figure; and the
+Figure-4 block in `run.py` is disabled behind `if False:`. Still, none of the
+available options is 100, and if the real count is 32 then — because Monte Carlo
+error scales as $1/\sqrt{n_{\text{rep}}}$ — the error is about
+$\sqrt{100/32} \approx 1.8\times$ larger than a 100-resample assumption.
+Section 8 includes 32 in the ladder so the reader can see it either way.
 
 Two properties of step 5 matter later. Averaging p-values across resamples has
 no accepted inferential interpretation — it is not a p-value for any hypothesis
@@ -367,9 +398,9 @@ than the only copy of the code. The package is built from these modules:
 | `R/01_estimand.R` | strata, ratios, weights, $\Delta(c)$, analytic curve, `cgr_reference_line_test()` |
 | `R/02_bayes.R` | `nig_draws()`, conjugate posterior curve |
 | `R/03_jags.R` | corrected JAGS model, backend check |
-| `R/04_kde.R` | faithful port of the original KDE procedure |
+| `R/04_kde.R` | KDE procedure port; `cgr_kde_curve()` for the published figures |
 | `R/05_sim.R` | AEB generative model, operating characteristics |
-| `R/06_plot.R` | figures and summary tables |
+| `R/06_plot.R` | Bayesian figures, `szigeti_panel()` published-style panels, summary tables |
 | `R/07_rope.R` | `cgr_rope()` region-of-practical-equivalence decomposition |
 
 Core functions, unfolded because they are short and load-bearing:
@@ -390,6 +421,58 @@ cgr_delta <- function(c, mu, r, s) {
 ---
 
 # Validation against the original method
+
+Before any table, the published **figures** need reproducing in their own visual
+language, so a reader can lay this work beside the paper. Szigeti's Figures 3 and
+4 use a twin axis: **blue averaged p-value** on the left, **red treatment
+estimate** on the right, a magenta 0.05 threshold, a green "Original CGR" line,
+and a black "True blind CGR" line at 0.50. The p-values are the KDE-resampling
+averages (Section 6), *not* posterior quantities — this section deliberately
+reproduces the p-value presentation the rest of the document argues against,
+because that is what reproduction means.
+
+## Figure 3 reproduced: the AEB simulation
+
+Four scenarios crossing direct treatment effect (DTE) and activated expectancy
+bias (AEB). "Original CGR" is the simulated guess probability $p_{CG} = 0.7$;
+"True blind CGR" is 0.50. The signature to check against the paper is panel 3
+(`DTE off, AEB on`): a rising red estimate crossing zero near 0.50, so the blue
+p-value peaks near 0.50 and drops toward significance at both ends.
+
+```{r repro-fig3, cache=TRUE, fig.height=8, fig.width=10}
+CFG <- list(c(0, 0), c(1, 0), c(0, 1), c(1, 1))
+labs <- c("DTE off; AEB off", "DTE on; AEB off",
+          "DTE off; AEB on", "DTE on; AEB on")
+set.seed(303)
+par(mfrow = c(2, 2))
+for (i in seq_along(CFG)) {
+  d <- sim_aeb(230, 0.7, as.logical(CFG[[i]][1]), as.logical(CFG[[i]][2]), "all")
+  szigeti_panel(cgr_kde_curve(d), labs[i], orig_cgr = 0.7, legend = (i == 1))
+}
+par(mfrow = c(1, 1))
+```
+
+## Figure 4 reproduced: the microdose trial
+
+The empirical panels. The green line is drawn at **0.72** because that is where
+the published figure and the author's code (`trial_cgrs = {'sbmd': 0.72}`) put
+it — the reference-line test below shows why that position is worth checking.
+Cognitive performance is the negative control: flat in both curves, because it is
+measured by objective tasks rather than self-report, so it should carry no
+expectancy signal.
+
+```{r repro-fig4, cache=TRUE, fig.height=8, fig.width=10}
+set.seed(404)
+par(mfrow = c(2, 2))
+for (i in seq_along(sb)) {
+  szigeti_panel(cgr_kde_curve(sb[[i]]), names(sb)[i],
+                orig_cgr = 0.72, legend = (i == 1))
+}
+par(mfrow = c(1, 1))
+```
+
+These should match the published Figures 3 and 4 panel for panel. The tables that
+follow quantify what the eye sees.
 
 ## Stratum allocation, supplementary example
 
@@ -523,11 +606,12 @@ Three conclusions:
    10 000 resamples the KDE average converges on the analytic value in every
    cell. The estimand uses only stratum means, and KDE smoothing preserves
    means.
-2. **The real resample count is materially noisy.** At the author's actual
-   32 resamples the Monte Carlo SE is roughly 0.2–0.5 points on the PANAS/VAS
-   scales — about $1.8\times$ the 100-resample value, and larger than the 0.12
-   discrepancy this document flags in the paper's reference-line placement.
-   PANAS at CGR 0.50 wanders by tens of a percent purely from resampling noise.
+2. **Few resamples is materially noisy.** At 32 resamples — the count the repo's
+   Figure-4 config specifies (see the caveats in Section 2) — the Monte Carlo SE
+   is roughly 0.2–0.5 points on the PANAS/VAS scales, about $1.8\times$ the
+   100-resample value and larger than the 0.12 discrepancy this document flags
+   in the paper's reference-line placement. PANAS at CGR 0.50 wanders by tens of
+   a percent purely from resampling noise.
 3. **The averaged p-values reproduce the published ones** (PANAS ~0.41 vs 0.43;
    Energy ~0.043 vs 0.04), confirming the port is faithful rather than merely
    plausible.
@@ -679,9 +763,17 @@ audit
 
 ### The 0.72 versus 0.647 discrepancy
 
-The paper quotes a trial CGR of 0.72; the public week-1 data gives 0.647.
-Pooling timepoints does not explain it (w1 0.647, w2 0.679, w3 0.620, w4 0.651;
-pooled 0.649). Splitting by **actual allocation** does:
+**The source code settles this: 0.72 was never computed from the data.** In
+[`szb37/CorrectGuessRateCurve`](https://github.com/szb37/CorrectGuessRateCurve)
+the Figure 4 reference line is drawn from `trial_cgrs = {'sbmd': 0.72}` in
+`src/config.py` — a hardcoded constant. The same code computes the trial's CGR
+from the data as `(n_plpl + n_acac) / n` = 0.647 and does not use it for the
+line. So the 0.72 is a fixed annotation, not the data's correct guess rate; the
+public week-1 data gives 0.647 and no pooling reaches 0.72 (w1 0.647, w2 0.679,
+w3 0.620, w4 0.651; pooled 0.649).
+
+Where did the *number* 0.72 come from? The most likely origin is the
+placebo-arm correct-guess rate — splitting by **actual allocation**:
 
 ```{r cgr-by-arm}
 do.call(rbind, lapply(names(sb), function(nm) {
@@ -696,10 +788,10 @@ do.call(rbind, lapply(names(sb), function(nm) {
 ```
 
 For PANAS the placebo-arm correct-guess rate is **0.7234**, essentially the
-quoted 0.72, while the microdose arm is 0.5275 — barely above chance. The most
-likely explanation is that 0.72 is the rate *conditional on receiving placebo*,
-not the overall CGR. **This is a hypothesis with strong numerical support, not a
-confirmed fact**, and should be put to the author.
+hardcoded 0.72, while the microdose arm is 0.5275 — barely above chance. That
+the constant equals the placebo-arm rate is a strong coincidence, and the likely
+reason the value 0.72 was chosen — but *that* part is a hypothesis; the fact that
+0.72 is hardcoded and not the data's overall CGR is settled by the code.
 
 It matters substantively. The arms are unbalanced (141 placebo vs 91 microdose
 in week 1) and guesses skew heavily toward "placebo". A single scalar CGR hides
@@ -728,6 +820,13 @@ do.call(rbind, lapply(names(sb), function(nm)
   cgr_summary_table(fits[[nm]], cgr_observed(cgr_strata(sb[[nm]])), nm)))
 
 ```
+
+The `pct_attenuation` column (e.g. ~66% for PANAS) is a **ratio between two
+estimates and depends on the likelihood**: under the Student-$t$ fit of
+Section 11 the same PANAS attenuation reads ~57%, not 66%. Treat it as a
+rough descriptor, not a fixed quantity; `pct_attenuation` is also suppressed
+(shown as `NA`) whenever the unadjusted estimate is not distinguishable from
+zero, because a ratio to a near-zero denominator is meaningless.
 
 ```{r empirical-plot, fig.height=6}
 cur <- do.call(rbind, lapply(names(sb), function(nm) {
@@ -858,9 +957,23 @@ if (!has_jags) cat(
 
 A **small** $\nu$ (say under 10) would mean the data are genuinely heavier-tailed
 than Gaussian and the robust fit is doing real work; a **large** $\nu$ means the
-$t$ collapsed back toward the normal and the Gaussian assumption was safe. With
-$\nu \approx 18$ here, the normal and Student-$t$ rows agree closely — so despite
-the ACAC skew, the PANAS conclusion does not rest on a handful of observations.
+$t$ collapsed back toward the normal. Here $\nu \approx 18$, so the tails are
+only mildly heavy.
+
+**But read the point estimate before concluding "no change".** The adjusted
+estimate moves from 1.077 (normal) to ~1.355 (Student-$t$) — a **~26% shift** in
+the headline number. That is not negligible for the *attenuation* summary
+reported elsewhere: under the normal likelihood PANAS attenuates
+$3.15 \to 1.08 \approx 66\%$, but under the Student-$t$ it is
+$3.15 \to 1.355 \approx 57\%$. So the percentage attenuation is
+**likelihood-dependent** and should not be quoted as a single fixed number.
+
+What *does* survive the switch is the **inference**: the two posteriors differ by
+only ~0.2 of a posterior SD, their 95% credible intervals overlap heavily, and
+$P(\text{effect} > 0)$ moves only from 0.79 to 0.84. So the qualitative
+conclusion — a positive effect that is much attenuated but not clearly zero —
+holds under both likelihoods; it is the exact attenuation *percentage* that is
+not robust, not the direction.
 
 ---
 

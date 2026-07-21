@@ -55,6 +55,60 @@ cgr_plot <- function(cur, obs_cgr, title = NULL,
                    legend.position = "top")
 }
 
+# Reproduce Szigeti's published twin-axis figure in its OWN visual grammar so a
+# reader can lay it beside the paper: blue averaged p-value on the left axis, red
+# treatment estimate on the right, a magenta 0.05 threshold, a green "Original
+# CGR" line and a black "True blind CGR" (0.5) line. `z` is the output of
+# cgr_kde_curve(). This deliberately plots the p-value presentation the rest of
+# the package argues against - because that is what reproduction means.
+szigeti_panel <- function(z, title, orig_cgr, blind_cgr = 0.5, legend = FALSE) {
+  lo_p <- -0.05; hi_p <- 0.75                       # left axis, as published
+  elo <- min(z$est - z$est_sd, na.rm = TRUE)
+  ehi <- max(z$est + z$est_sd, na.rm = TRUE)
+  pad <- 0.12 * (ehi - elo); elo <- elo - pad; ehi <- ehi + pad
+  sc  <- function(v) (v - elo) / (ehi - elo) * (hi_p - lo_p) + lo_p
+
+  op <- graphics::par(mar = c(4.2, 4.2, 3, 4.6), bg = "white")
+  on.exit(graphics::par(op), add = TRUE)
+
+  graphics::plot(NA, xlim = c(0, 1), ylim = c(lo_p, hi_p), xaxs = "i",
+                 xlab = "Correct guess rate (CGR)", ylab = "", axes = FALSE,
+                 main = title, font.main = 2, cex.main = 1.1)
+  graphics::rect(graphics::par("usr")[1], graphics::par("usr")[3],
+                 graphics::par("usr")[2], graphics::par("usr")[4],
+                 col = "grey92", border = NA)
+  graphics::grid(col = "white", lty = 1, lwd = 1.1)
+
+  graphics::polygon(c(z$cgr, rev(z$cgr)),
+                    c(sc(z$est - z$est_sd), rev(sc(z$est + z$est_sd))),
+                    col = grDevices::adjustcolor("red", 0.22), border = NA)
+  graphics::lines(z$cgr, sc(z$est), col = "red", lwd = 2)
+
+  graphics::polygon(c(z$cgr, rev(z$cgr)),
+                    c(pmax(z$p - z$p_sd, lo_p), rev(pmin(z$p + z$p_sd, hi_p))),
+                    col = grDevices::adjustcolor("blue", 0.22), border = NA)
+  graphics::lines(z$cgr, z$p, col = "blue", lwd = 2)
+
+  graphics::abline(h = 0.05, col = "magenta", lty = 2, lwd = 1.4)
+  graphics::abline(v = blind_cgr, col = "black",     lty = 2, lwd = 1.4)
+  graphics::abline(v = orig_cgr,  col = "darkgreen", lty = 2, lwd = 1.4)
+
+  graphics::axis(1); graphics::box()
+  graphics::axis(2, at = seq(-0.05, 0.75, by = 0.10), las = 1, col.axis = "blue")
+  graphics::mtext("Treatment p-value", side = 2, line = 2.9, col = "blue")
+  tk <- pretty(c(elo, ehi), 8); tk <- tk[tk >= elo & tk <= ehi]
+  graphics::axis(4, at = sc(tk), labels = format(tk, trim = TRUE), las = 1,
+                 col.axis = "red")
+  graphics::mtext("Treatment estimate", side = 4, line = 3.2, col = "red")
+
+  if (legend) graphics::legend("topleft", bty = "n", cex = 0.72,
+    legend = c("Treatment p-value", "Treatment estimate",
+               "Original CGR", "True blind CGR", "Sig. threshold"),
+    col = c("blue", "red", "darkgreen", "black", "magenta"),
+    lty = c(1, 1, 2, 2, 2), lwd = c(2, 2, 1.4, 1.4, 1.4))
+  invisible(NULL)
+}
+
 # Summary at the two CGRs that matter, with attenuation reported both ways.
 #
 # The observed-CGR row must be read off the curve at EXACTLY the observed CGR,

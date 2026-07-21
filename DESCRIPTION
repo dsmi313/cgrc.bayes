@@ -19,7 +19,9 @@ Description: A reproduction of the Correct Guess Rate Curve (CGRC) method of
 License: MIT + file LICENSE
 Encoding: UTF-8
 Imports:
-    stats
+    stats,
+    graphics,
+    grDevices
 Suggests:
     ggplot2,
     rjags,

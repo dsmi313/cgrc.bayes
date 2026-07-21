@@ -48,6 +48,21 @@ test_that("the observed CGR is 0.647, NOT the quoted 0.72", {
   expect_equal(mean(pl$condition == pl$guess), 0.7234, tolerance = 0.001)
 })
 
+test_that("cgr_kde_curve returns a full grid of estimates and p-values", {
+  skip_on_cran()
+  set.seed(7)
+  d <- sim_aeb(300, dte_on = TRUE, aeb_on = TRUE)
+  z <- cgr_kde_curve(d, grid = seq(0, 1, length.out = 13), n_rep = 40)
+  expect_equal(nrow(z), 13)
+  expect_true(all(c("cgr", "est", "est_sd", "p", "p_sd") %in% names(z)))
+  expect_true(all(z$p >= 0 & z$p <= 1, na.rm = TRUE))
+  # at the observed CGR the curve should sit near the raw mean difference
+  o <- cgr_observed(cgr_strata(d))
+  zz <- cgr_kde_curve(d, grid = o, n_rep = 500)
+  raw <- mean(d$value[d$condition == "AC"]) - mean(d$value[d$condition == "PL"])
+  expect_lt(abs(zz$est - raw), 0.6)
+})
+
 test_that("KDE resampling converges to the analytic value", {
   skip_on_cran()
   set.seed(12)
