@@ -32,6 +32,7 @@ export(cgr_kde_curve)
 export(sim_aeb)
 export(cgr_operating)
 export(cgr_min_stratum)
+export(cgr_aeb_inflation)
 
 # plotting and summaries (R/06_plot.R)
 export(cgr_plot)

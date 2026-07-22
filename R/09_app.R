@@ -40,28 +40,38 @@ cgrc_app <- function(...) {
     (1 - tx) * ty * g(x0, y1) + tx * ty * g(x1, y1)
 }
 
-# Operating characteristics for one (DTE, AEB) scenario at arbitrary (n, p_cg)
-# and a grid true_effect, read from the lookup. Bilinear in (n, p_cg);
-# true_effect is snapped to the nearest grid value. Returns a one-row data.frame
-# of interpolated metrics plus an `interpolated` flag.
-cgrc_op_at <- function(lut, n, p_cg, true_effect, dte, aeb) {
-  effs <- sort(unique(lut$true_effect))
+# Operating characteristics for one (DTE, AEB) scenario at arbitrary (n, p_cg),
+# a grid true_effect and a grid mu_aeb (expectancy magnitude), read from the
+# lookup. Bilinear in (n, p_cg); true_effect and mu_aeb are snapped to their
+# nearest grid values. `mu_aeb` only matters for AEB-on rows (with AEB off there
+# is no expectancy term). Returns a one-row data.frame of interpolated metrics
+# plus an `interpolated` flag. Works whether or not the lookup has a mu_aeb
+# column (older 7.7-only tables are treated as a single level).
+cgrc_op_at <- function(lut, n, p_cg, true_effect, dte, aeb, mu_aeb = 7.7) {
+  sub <- lut[lut$DTE == dte & lut$AEB == aeb, ]
+  ma  <- NA_real_
+  if ("mu_aeb" %in% names(sub)) {
+    mas <- sort(unique(sub$mu_aeb)); ma <- mas[which.min(abs(mas - mu_aeb))]
+    sub <- sub[sub$mu_aeb == ma, ]
+  }
+  effs <- sort(unique(sub$true_effect))
   eff  <- effs[which.min(abs(effs - true_effect))]
-  sub  <- lut[lut$true_effect == eff & lut$DTE == dte & lut$AEB == aeb, ]
+  sub  <- sub[sub$true_effect == eff, ]
   if (!nrow(sub)) stop("no lookup rows for that scenario", call. = FALSE)
   metrics <- c("unadj_bias", "adj_bias", "adj_rmse", "coverage95",
                "p_fav_gt_95", "freq_sig", "empty_stratum_rate")
   vals <- vapply(metrics, function(m) .cgrc_bilin(sub, "n", "p_cg", m, n, p_cg),
                  numeric(1))
   on_grid <- n %in% sub$n && p_cg %in% sub$p_cg
-  cbind(data.frame(n = n, p_cg = p_cg, true_effect = eff, DTE = dte, AEB = aeb,
-                   interpolated = !on_grid),
+  cbind(data.frame(n = n, p_cg = p_cg, true_effect = eff, mu_aeb = ma,
+                   DTE = dte, AEB = aeb, interpolated = !on_grid),
         as.data.frame(as.list(vals)))
 }
 
 # Power of the ADJUSTED analysis to detect true_effect, over n, at fixed p_cg.
 # This is the DTE-on / AEB-off row - the honest, expectancy-free power (the
 # AEB-on rows mix drug and expectancy, so their p_fav is not clean power).
+# With AEB off the expectancy magnitude is irrelevant, so mu_aeb does not enter.
 cgrc_power_curve <- function(lut, p_cg, true_effect) {
   ns <- sort(unique(lut$n))
   data.frame(n = ns,
@@ -97,30 +107,34 @@ cgrc_pct_ok <- function(unadj_est, unadj_lo, unadj_hi, adj_est) {
   distinct && same_sign
 }
 
-# Plain-language verdict for a design, computed from the lookup (never
-# hand-written). Combines adjusted power (DTE on / AEB off) with the unadjusted
-# false-positive rate under pure expectancy (DTE off / AEB on).
-cgrc_verdict <- function(lut, n, p_cg, true_effect) {
+# Plain-language readout for a design, computed from the lookup (never
+# hand-written). States the numbers and the trade-off; it does NOT pronounce a
+# design "safe" or "acceptable" - that is the user's judgment, not the tool's.
+# The two criteria are named explicitly: the unadjusted rate is frequentist
+# p<0.05; the adjusted rate is Bayesian posterior P(favourable) > 0.95 -
+# comparable in spirit, not the same quantity.
+cgrc_verdict <- function(lut, n, p_cg, true_effect, mu_aeb = 7.7) {
   minstr <- cgr_min_stratum(n, p_cg)
-  fp  <- cgrc_op_at(lut, n, p_cg, true_effect, 0, 1)   # pure expectancy
+  fp  <- cgrc_op_at(lut, n, p_cg, true_effect, 0, 1, mu_aeb)   # pure expectancy
   feas <- if (minstr < 15) sprintf(
-    paste0(" Caution: the smallest stratum averages ~%.0f participants at this ",
-           "design, so CGR adjustment may be unstable or undefined here."),
-    minstr) else ""
+    paste0(" (The smallest stratum averages ~%.0f participants here, so the ",
+           "estimand can be undefined for some trials - see the feasibility ",
+           "readout.)"), minstr) else ""
   if (true_effect == 0) {
-    sprintf(paste0("At n=%d with %.0f%% correct guessing and no true effect, ",
-      "an unadjusted analysis would report a false positive %.0f%% of the time ",
-      "when the apparent signal is pure expectancy; the CGR-adjusted analysis ",
-      "flags it only %.0f%% of the time.%s"),
+    sprintf(paste0("At n=%d with %.0f%% correct guessing and no true effect: ",
+      "when the apparent signal is pure expectancy, an unadjusted analysis ",
+      "reaches p<0.05 in %.0f%% of simulated trials, while the CGR-adjusted ",
+      "analysis reaches posterior P>0.95 in %.0f%%.%s"),
       n, 100 * p_cg, 100 * fp$freq_sig, 100 * fp$p_fav_gt_95, feas)
   } else {
-    pw <- cgrc_op_at(lut, n, p_cg, true_effect, 1, 0)  # clean adjusted power
-    sprintf(paste0("At n=%d with %.0f%% correct guessing, the adjusted analysis ",
-      "has %.0f%% power to detect a %.1f-point effect. When the apparent effect ",
-      "is pure expectancy, an unadjusted analysis would call it significant ",
-      "%.0f%% of the time; the CGR-adjusted analysis flags it only %.0f%% of ",
-      "the time.%s"),
-      n, 100 * p_cg, 100 * pw$p_fav_gt_95, true_effect,
+    pw <- cgrc_op_at(lut, n, p_cg, true_effect, 1, 0, mu_aeb)  # clean power
+    sprintf(paste0("At n=%d with %.0f%% correct guessing: for a real %.1f-point ",
+      "effect the CGR-adjusted analysis reaches posterior P>0.95 in %.0f%% of ",
+      "simulated trials. When the apparent effect is instead pure expectancy, ",
+      "an unadjusted analysis reaches p<0.05 in %.0f%% of trials and the ",
+      "adjusted analysis in %.0f%%. Weigh that trade-off against your own ",
+      "priorities.%s"),
+      n, 100 * p_cg, true_effect, 100 * pw$p_fav_gt_95,
       100 * fp$freq_sig, 100 * fp$p_fav_gt_95, feas)
   }
 }

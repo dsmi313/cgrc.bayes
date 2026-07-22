@@ -1,49 +1,70 @@
-# Precompute the operating-characteristics lookup table that the Shiny app reads
-# instantly. cgr_operating(n_trials = 500) fits 2000 posteriors and takes ~9 s,
-# so the app cannot call it on a slider - it reads this table instead.
+# Precompute the operating-characteristics lookup the Shiny app reads instantly.
+# cgr_operating(n_trials = 500) fits 2000 posteriors (~9 s), so the app cannot
+# call it on a slider - it reads this table and interpolates.
 #
-# Sweep: n x p_cg x true_effect, at n_trials = 500 (the count below which Monte
-# Carlo error on coverage is the same size as the effect being judged). Each cell
-# stores cgr_operating()'s full 4-row output plus the empty-stratum diagnostics.
+# Sweep: n x p_cg x true_effect x mu_aeb (expectancy magnitude), n_trials = 500.
+# Expectancy is "a parameter of their data", not a constant, so three levels are
+# swept: half / reference / double the microdose calibration.
+#   - Reference level mu_aeb = 7.7: full grid (all n, all effects).
+#   - New levels 3.85 and 15.4: reduced grid (drop n = 60 and the 4.5 effect,
+#     the least informative cells) to keep the extra build near an hour.
 #
-# Run once from the repo root:  Rscript data-raw/build_lookup.R
-# Commits to inst/extdata/cgrc_lookup.rds (shipped as package data via
-# cgrc_lookup()). Takes ~1 hour.
+# RESUMABLE: loads any existing inst/extdata/cgrc_lookup.rds, skips cells already
+# present, computes only the rest, and saves incrementally. So this both builds
+# the table from scratch and extends an existing one without recomputing it.
+#
+# Run from the repo root:  Rscript data-raw/build_lookup.R   (~1 h fresh; ~1.5 h
+# to add the two new expectancy levels on top of the reference level).
 
 suppressMessages(library(cgrc.bayes))
 
-N_GRID   <- c(60, 80, 120, 160, 200, 250, 300, 400, 500, 700, 1000)
 PCG_GRID <- seq(0.50, 0.95, by = 0.05)
-EFF_GRID <- c(0, 1.5, 3, 4.5)
+N_FULL   <- c(60, 80, 120, 160, 200, 250, 300, 400, 500, 700, 1000)
+N_RED    <- c(80, 120, 160, 200, 250, 300, 400, 500, 700, 1000)  # drop n = 60
+EFF_FULL <- c(0, 1.5, 3, 4.5)
+EFF_RED  <- c(0, 1.5, 3)                                          # drop 4.5
 N_TRIALS <- 500
 SEED     <- 1
+DEST     <- "inst/extdata/cgrc_lookup.rds"
 
-grid <- expand.grid(n = N_GRID, p_cg = PCG_GRID, true_effect = EFF_GRID,
-                    KEEP.OUT.ATTRS = FALSE)
-cat(sprintf("cells: %d  (n_trials = %d each)\n", nrow(grid), N_TRIALS))
+target <- rbind(
+  expand.grid(n = N_FULL, p_cg = PCG_GRID, true_effect = EFF_FULL,
+              mu_aeb = 7.7,          KEEP.OUT.ATTRS = FALSE),
+  expand.grid(n = N_RED,  p_cg = PCG_GRID, true_effect = EFF_RED,
+              mu_aeb = c(3.85, 15.4), KEEP.OUT.ATTRS = FALSE))
 
-t0 <- Sys.time(); out <- vector("list", nrow(grid))
-for (i in seq_len(nrow(grid))) {
-  g <- grid[i, ]
+key <- function(d) paste(d$n, d$p_cg, d$true_effect, d$mu_aeb, sep = "|")
+
+existing <- if (file.exists(DEST)) readRDS(DEST) else NULL
+if (!is.null(existing) && !"mu_aeb" %in% names(existing)) existing$mu_aeb <- 7.7
+have <- if (is.null(existing)) character(0) else unique(key(existing))
+todo <- target[!key(target) %in% have, , drop = FALSE]
+cat(sprintf("target cells: %d   already present: %d   to compute: %d\n",
+            nrow(target), length(have), nrow(todo)))
+
+acc <- if (is.null(existing)) list() else list(existing)
+t0 <- Sys.time()
+for (i in seq_len(nrow(todo))) {
+  g  <- todo[i, ]
   op <- cgr_operating(n_trials = N_TRIALS, n = g$n, p_cg = g$p_cg,
-                      mu_dte = g$true_effect, noise = "all", seed = SEED)
+                      mu_dte = g$true_effect, mu_aeb = g$mu_aeb,
+                      noise = "all", seed = SEED)
   op$n <- g$n; op$p_cg <- g$p_cg; op$true_effect <- g$true_effect
-  out[[i]] <- op
-  if (i %% 10 == 0 || i == nrow(grid)) {
+  op$mu_aeb <- g$mu_aeb
+  acc[[length(acc) + 1]] <- op
+  if (i %% 20 == 0 || i == nrow(todo)) {              # incremental save
+    dir.create("inst/extdata", showWarnings = FALSE, recursive = TRUE)
+    saveRDS(do.call(rbind, acc), DEST)
     el <- as.numeric(Sys.time() - t0, units = "mins")
-    cat(sprintf("  %3d/%d cells  %.1f min elapsed  (~%.0f min total)\n",
-                i, nrow(grid), el, el / i * nrow(grid)))
+    cat(sprintf("  %4d/%d new cells  %.1f min  (~%.0f min for the new cells)\n",
+                i, nrow(todo), el, el / i * nrow(todo)))
   }
 }
 
-cgrc_lookup <- do.call(rbind, out)
-rownames(cgrc_lookup) <- NULL
-attr(cgrc_lookup, "meta") <- list(
+lut <- do.call(rbind, acc); rownames(lut) <- NULL
+attr(lut, "meta") <- list(
   n_trials = N_TRIALS, seed = SEED, noise = "all",
-  n_grid = N_GRID, p_cg_grid = PCG_GRID, eff_grid = EFF_GRID,
+  p_cg_grid = PCG_GRID, mu_aeb_grid = c(3.85, 7.7, 15.4),
   built = Sys.time(), pkg_version = as.character(utils::packageVersion("cgrc.bayes")))
-
-dir.create("inst/extdata", showWarnings = FALSE, recursive = TRUE)
-saveRDS(cgrc_lookup, "inst/extdata/cgrc_lookup.rds")
-cat(sprintf("wrote inst/extdata/cgrc_lookup.rds  (%d rows, %d cells)\n",
-            nrow(cgrc_lookup), nrow(cgrc_lookup) / 4))
+saveRDS(lut, DEST)
+cat(sprintf("wrote %s  (%d rows, %d cells)\n", DEST, nrow(lut), nrow(lut) / 4))

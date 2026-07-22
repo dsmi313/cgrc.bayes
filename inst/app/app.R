@@ -13,7 +13,11 @@ library(ggplot2)
 library(cgrc.bayes)
 
 LUT <- tryCatch(cgrc_lookup(), error = function(e) NULL)
-EFFS <- if (is.null(LUT)) c(0, 1.5, 3, 4.5) else sort(unique(LUT$true_effect))
+# effect sizes offered = those simulated at EVERY expectancy level, so no cell
+# is missing when the expectancy slider moves.
+EFFS <- if (is.null(LUT)) c(0, 1.5, 3) else if ("mu_aeb" %in% names(LUT))
+  sort(Reduce(intersect, split(LUT$true_effect, LUT$mu_aeb))) else
+  sort(unique(LUT$true_effect))
 NRANGE <- if (is.null(LUT)) c(60, 1000) else range(LUT$n)
 CELL_LABEL <- c("00" = "no effect, no expectancy",
                 "10" = "real effect, no expectancy",
@@ -22,9 +26,9 @@ CELL_LABEL <- c("00" = "no effect, no expectancy",
 
 ## ---- helpers used only for display -----------------------------------------
 
-op_table_A <- function(lut, n, p_cg, eff) {
+op_table_A <- function(lut, n, p_cg, eff, mu_aeb) {
   rows <- do.call(rbind, lapply(list(c(0,0), c(1,0), c(0,1), c(1,1)), function(z)
-    cgrc_op_at(lut, n, p_cg, eff, z[1], z[2])))
+    cgrc_op_at(lut, n, p_cg, eff, z[1], z[2], mu_aeb)))
   data.frame(
     scenario = CELL_LABEL[paste0(rows$DTE, rows$AEB)],
     `true effect` = round(ifelse(rows$DTE == 1, eff, 0), 2),
@@ -59,6 +63,11 @@ ui <- navbarPage(
                     value = 0.85, step = 0.01),
         selectInput("eff", "True effect size to detect (points)",
                     choices = EFFS, selected = 3),
+        sliderInput("mu_aeb", "Expectancy magnitude (points)",
+                    min = 0, max = 20, value = 7.7, step = 0.5),
+        div(class = "muted", "7.7 = the microdose-trial reference value",
+            "(Szigeti's calibration, not a universal constant)."),
+        uiOutput("inflation_note"),
         tags$hr(),
         helpText(class = "muted",
           "Curves and tables are read from a precomputed simulation grid and",
@@ -84,10 +93,13 @@ ui <- navbarPage(
         br(),
         h4("Operating characteristics at your settings"),
         p(class = "muted",
-          "Honest power comparison is the \"real effect, no expectancy\" row:",
-          "there the adjusted flag rate and the unadjusted significance rate",
-          "measure the same thing. In the expectancy rows the unadjusted column",
-          "is mostly detecting expectancy, not drug - do not read it as power."),
+          strong("Criteria differ:"), "\"adjusted flags effect\" is the share of",
+          "trials with posterior P(favourable) > 0.95 (Bayesian); \"unadjusted",
+          "significant\" is the share with p < 0.05 (frequentist) — comparable in",
+          "spirit, not the same quantity. The honest power comparison is the",
+          "\"real effect, no expectancy\" row, where both measure the same thing;",
+          "in the expectancy rows the unadjusted column is mostly detecting",
+          "expectancy, not drug, so do not read it as power."),
         tableOutput("opchar"),
         uiOutput("exact_out")
       )
@@ -127,17 +139,24 @@ server <- function(input, output, session) {
   no_lut <- is.null(LUT)
 
   ## ---- Panel A ----
+  output$inflation_note <- renderUI({
+    inf <- cgr_aeb_inflation(input$mu_aeb, input$pcg)
+    div(class = "muted", style = "margin-top:6px;",
+        HTML(sprintf("At your CGR of %.2f, this inflates an <b>unadjusted</b>
+                      estimate by <b>%.1f points</b>.", input$pcg, inf)))
+  })
+
   output$verdict <- renderUI({
     if (no_lut) return(div(class = "verdict warn",
       "Lookup table not built. Run data-raw/build_lookup.R, then reinstall."))
     div(class = "verdict",
-        cgrc_verdict(LUT, input$n, input$pcg, as.numeric(input$eff)))
+        cgrc_verdict(LUT, input$n, input$pcg, as.numeric(input$eff), input$mu_aeb))
   })
 
   output$feasibility <- renderUI({
     minstr <- cgr_min_stratum(input$n, input$pcg)
     degen  <- if (no_lut) NA else
-      cgrc_op_at(LUT, input$n, input$pcg, as.numeric(input$eff), 0, 1)$empty_stratum_rate
+      cgrc_op_at(LUT, input$n, input$pcg, as.numeric(input$eff), 0, 1, input$mu_aeb)$empty_stratum_rate
     warn <- minstr < 15 || (!is.na(degen) && degen > 0.02)
     div(class = if (warn) "verdict warn feas" else "verdict feas",
       HTML(sprintf(
@@ -151,7 +170,12 @@ server <- function(input, output, session) {
 
   output$power_plot <- renderPlot({
     if (no_lut) return(NULL)
-    pc <- cgrc_power_curve(LUT, input$pcg, as.numeric(input$eff))
+    eff <- as.numeric(input$eff)
+    pc <- cgrc_power_curve(LUT, input$pcg, eff)
+    # with no true effect there is nothing to have "power" for: the same curve
+    # is then the adjusted false-favourable rate.
+    ylab <- if (eff == 0) "adjusted false-favourable rate (no true effect)"
+            else "power of the adjusted analysis"
     ggplot(pc, aes(n, power)) +
       geom_hline(yintercept = c(0.8, 0.9), linetype = "dotted", colour = "grey60") +
       geom_line(colour = "#2471A3", linewidth = 1) +
@@ -160,15 +184,15 @@ server <- function(input, output, session) {
       annotate("text", x = input$n, y = 0.02, label = paste0("your n=", input$n),
                colour = "#C0392B", hjust = -0.05, size = 3.6) +
       scale_y_continuous(limits = c(0, 1), labels = scales::percent) +
-      labs(x = "sample size (n)", y = "power of the adjusted analysis") +
+      labs(x = "sample size (n)", y = ylab) +
       theme_minimal(base_size = 13) + theme(panel.grid.minor = element_blank())
   })
 
   output$tradeoff_plot <- renderPlot({
     if (no_lut) return(NULL)
     eff <- as.numeric(input$eff)
-    pw  <- cgrc_op_at(LUT, input$n, input$pcg, eff, 1, 0)  # real effect, no exp
-    fp  <- cgrc_op_at(LUT, input$n, input$pcg, eff, 0, 1)  # pure expectancy
+    pw  <- cgrc_op_at(LUT, input$n, input$pcg, eff, 1, 0)              # real effect, no exp
+    fp  <- cgrc_op_at(LUT, input$n, input$pcg, eff, 0, 1, input$mu_aeb)  # pure expectancy
     df <- data.frame(
       metric = factor(c("false positive\n(pure expectancy)", "false positive\n(pure expectancy)",
                         "power\n(real effect)", "power\n(real effect)"),
@@ -190,7 +214,7 @@ server <- function(input, output, session) {
 
   output$opchar <- renderTable({
     if (no_lut) return(NULL)
-    op_table_A(LUT, input$n, input$pcg, as.numeric(input$eff))
+    op_table_A(LUT, input$n, input$pcg, as.numeric(input$eff), input$mu_aeb)
   }, digits = 3)
 
   ## exact simulation, only on demand
@@ -199,7 +223,8 @@ server <- function(input, output, session) {
     withProgress(message = "Running 500 simulated trials x 4 scenarios...",
                  value = 0.3, {
       op <- cgr_operating(n_trials = 500, n = input$n, p_cg = input$pcg,
-                          mu_dte = as.numeric(input$eff), noise = "all", seed = 1)
+                          mu_dte = as.numeric(input$eff), mu_aeb = input$mu_aeb,
+                          noise = "all", seed = 1)
       incProgress(0.7)
       exact_rv(op)
     })

@@ -88,3 +88,14 @@ cgr_operating <- function(n_trials = 500, n = 230, p_cg = 0.7,
 # may be infeasible: when this drops below ~15 the discordant strata are thin and
 # simulated trials start coming up empty (see cgr_operating()'s empty_stratum_rate).
 cgr_min_stratum <- function(n, p_cg) n * 0.5 * pmin(p_cg, 1 - p_cg)
+
+# Expected inflation of an UNADJUSTED treatment estimate caused by activated
+# expectancy bias, in outcome points. In the AEB model the expectancy term adds
+# mu_aeb * E[B_TE | arm] to each arm's mean, and B_TE (perceived treatment) has
+# E[B_TE | active] = p_cg and E[B_TE | placebo] = 1 - p_cg, so an unadjusted
+# analysis picks up mu_aeb * (p_cg - (1 - p_cg)) = mu_aeb * (2 * p_cg - 1).
+# Closed form, no simulation (matches simulation to < 0.02 points). Turns the
+# opaque expectancy magnitude into a number a user can weigh against their own
+# effect size: "at CGR 0.85, mu_aeb = 7.7 inflates an unadjusted estimate by
+# 5.4 points".
+cgr_aeb_inflation <- function(mu_aeb, p_cg) mu_aeb * (2 * p_cg - 1)

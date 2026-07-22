@@ -38,11 +38,14 @@ test_that("cgrc_power_curve returns the DTE-on/AEB-off row over n", {
   expect_equal(pc$power, c(100/300, 200/300), tolerance = 1e-8)
 })
 
-test_that("cgrc_verdict is computed and mentions power and percentages", {
+test_that("cgrc_verdict states both criteria and does not pronounce safety", {
   v <- cgrc_verdict(mk_lut(), n = 200, p_cg = 0.6, true_effect = 3)
   expect_type(v, "character")
-  expect_match(v, "power")
+  expect_match(v, "P>0.95")   # names the Bayesian criterion (adjusted)
+  expect_match(v, "p<0.05")   # names the frequentist criterion (unadjusted)
   expect_match(v, "%")
+  # the tool states numbers, it does not pronounce a design safe/unsafe
+  expect_false(grepl("safe|unsafe|acceptable", v, ignore.case = TRUE))
 })
 
 test_that("cgrc_normalise_arm maps common codings and errors on unknowns", {
@@ -64,6 +67,30 @@ test_that("cgrc_pct_ok suppresses meaningless attenuation ratios", {
 test_that("cgr_min_stratum matches the closed form", {
   expect_equal(cgr_min_stratum(120, 0.85), 120 * 0.5 * 0.15)
   expect_equal(cgr_min_stratum(200, 0.60), 200 * 0.5 * 0.40)
+})
+
+test_that("cgr_aeb_inflation matches the closed form (and simulation)", {
+  expect_equal(cgr_aeb_inflation(7.7, 0.85), 7.7 * 0.7, tolerance = 1e-12)
+  expect_equal(cgr_aeb_inflation(7.7, 0.5), 0)          # no inflation at chance
+  expect_equal(cgr_aeb_inflation(10, 0.7), 4)
+  skip_on_cran()
+  set.seed(9)                                            # within 0.05 of sim
+  sim <- mean(replicate(200, {
+    d <- sim_aeb(4000, p_cg = 0.85, dte_on = FALSE, aeb_on = TRUE, mu_aeb = 7.7)
+    mean(d$value[d$condition == "AC"]) - mean(d$value[d$condition == "PL"])
+  }))
+  expect_lt(abs(sim - cgr_aeb_inflation(7.7, 0.85)), 0.05)
+})
+
+test_that("cgrc_op_at snaps mu_aeb to the right expectancy level", {
+  a <- mk_lut(); a$mu_aeb <- 7.7
+  b <- mk_lut(); b$mu_aeb <- 15.4
+  b$freq_sig <- ifelse(b$AEB == 1, 0.99, b$freq_sig)     # higher expectancy
+  L <- rbind(a, b)
+  expect_equal(unname(cgrc_op_at(L, 100, 0.6, 3, 0, 1, mu_aeb = 7.7)$freq_sig), 0.9)
+  expect_equal(unname(cgrc_op_at(L, 100, 0.6, 3, 0, 1, mu_aeb = 15.4)$freq_sig), 0.99)
+  # a value between levels snaps to the nearest
+  expect_equal(unname(cgrc_op_at(L, 100, 0.6, 3, 0, 1, mu_aeb = 14)$freq_sig), 0.99)
 })
 
 # ---- Acceptance invariants against the REAL lookup (skips if not built) ------
