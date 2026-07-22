@@ -24,6 +24,8 @@ Imports:
     grDevices
 Suggests:
     ggplot2,
+    scales,
+    shiny,
     rjags,
     coda,
     digest,

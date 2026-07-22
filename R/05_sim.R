@@ -40,16 +40,17 @@ sim_aeb <- function(n = 230, p_cg = 0.7, dte_on = FALSE, aeb_on = FALSE,
 # guess distribution is identical in both arms, so the AEB term contributes
 # equally to each and cancels.
 cgr_operating <- function(n_trials = 500, n = 230, p_cg = 0.7,
-                          noise = "all", n_draws = 4000, seed = 1) {
+                          noise = "all", n_draws = 4000, seed = 1,
+                          mu_dte = 3, mu_aeb = 7.7) {
   set.seed(seed)
   cfg <- list(c(0, 0), c(1, 0), c(0, 1), c(1, 1))
   rows <- lapply(cfg, function(z) {
     dte <- as.logical(z[1]); aeb <- as.logical(z[2])
-    truth <- if (dte) 3 else 0
+    truth <- if (dte) mu_dte else 0
     adj <- unadj <- numeric(n_trials)
     cov <- fav <- sig <- valid <- logical(n_trials)
     for (i in seq_len(n_trials)) {
-      d  <- sim_aeb(n, p_cg, dte, aeb, noise)
+      d  <- sim_aeb(n, p_cg, dte, aeb, noise, mu_dte = mu_dte, mu_aeb = mu_aeb)
       # At a high correct-guess rate with small n, a wrong-guess stratum can come
       # up empty, and the estimand is then undefined. Skip that trial rather than
       # crash - the RATE of such trials is itself a warning that CGR adjustment
@@ -78,3 +79,12 @@ cgr_operating <- function(n_trials = 500, n = 230, p_cg = 0.7,
   })
   out <- do.call(rbind, rows); rownames(out) <- NULL; out
 }
+
+# Expected size of the smallest stratum for a design of size n at correct-guess
+# rate p_cg. Under balanced allocation the four strata have expected shares
+# 0.5*p_cg (the two concordant/correct strata) and 0.5*(1 - p_cg) (the two
+# discordant/wrong strata), so the smallest is n * 0.5 * min(p_cg, 1 - p_cg).
+# Closed form, no simulation - the single best early warning that CGR adjustment
+# may be infeasible: when this drops below ~15 the discordant strata are thin and
+# simulated trials start coming up empty (see cgr_operating()'s empty_stratum_rate).
+cgr_min_stratum <- function(n, p_cg) n * 0.5 * pmin(p_cg, 1 - p_cg)

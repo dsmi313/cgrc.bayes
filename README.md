@@ -51,6 +51,22 @@ sample size, guess rate and effect size:
 cgr_operating(n = 120, p_cg = 0.85, n_trials = 500)   # bias, RMSE, 95% coverage, error rates
 ```
 
+**Or use the interactive app** — "Is CGR adjustment safe for my trial?":
+
+```r
+install.packages("shiny")
+cgrc_app()
+```
+
+Panel A (Design) reads a precomputed simulation grid instantly: a plain-language
+verdict, a power-vs-n curve, the false-positive/power trade-off with and without
+adjustment, a feasibility readout (smallest expected stratum, % of simulated
+trials with an empty stratum), and a button to run the exact simulation at your
+settings. Panel B (Analyse) takes a CSV of your own trial, adjusts it with
+`cgrc()`, and shows the CGR curve, the ROPE decomposition, and the observed-CGR
+identity check — then offers to run the design check at your trial's own n and
+observed guess rate.
+
 `cgrc()` returns the CGR-adjusted estimate (at perfect blinding, CGR 0.50), a
 95% credible interval, and the posterior probability the effect is favourable.
 `cgr_operating()` tells you whether that adjustment is trustworthy for a trial of
@@ -63,8 +79,10 @@ a warning that CGR adjustment is fragile for your design.
 
 | Function | Purpose |
 |---|---|
+| `cgrc_app()` | launch the "is CGR safe for my trial?" Shiny app |
 | `cgrc(df)` | one-call adjuster: curve + estimate at CGR 0.50 + P(favourable) |
-| `cgr_operating(n, p_cg, ...)` | pre-flight simulation: bias, RMSE, 95% coverage, error rates |
+| `cgr_operating(n, p_cg, ...)` | pre-flight simulation: bias, RMSE, 95% coverage, error rates (+ `empty_stratum_rate`) |
+| `cgr_min_stratum(n, p_cg)` | expected smallest stratum — the feasibility early warning |
 | `cgr_conjugate(df, grid)` | full Normal-Inverse-Gamma posterior curve over a CGR grid |
 | `cgr_jags(df, likelihood)` | JAGS backend; `"normal"` or robust `"t"` likelihood |
 | `cgr_check_backends(df)` | verify the conjugate and JAGS posteriors agree |
@@ -87,8 +105,12 @@ a warning that CGR adjustment is fragile for your design.
 | `R/05_sim.R` | AEB generative model and operating-characteristics study |
 | `R/06_plot.R` | figures and summary tables |
 | `R/07_rope.R` | `cgr_rope()` region-of-practical-equivalence decomposition |
+| `R/09_app.R` | Shiny app support: lookup accessor, interpolation, verdict, input normalisation |
+| `inst/app/app.R` | the Shiny app (Design + Analyse panels) |
+| `data-raw/build_lookup.R` | precompute the operating-characteristics grid (run once, ~1h) |
+| `inst/extdata/cgrc_lookup.rds` | the precomputed grid, shipped as package data |
 | `DESCRIPTION`, `NAMESPACE` | R package metadata (`cgrc.bayes`) |
-| `tests/testthat/` | estimand + reproduction + rope test suites |
+| `tests/testthat/` | estimand + reproduction + rope + app test suites |
 | `data-raw/download_data.R` | fetch + checksum-verify the public data |
 | `data/pacutes.csv` | pinned public dataset (SHA-256 in `PROVENANCE.txt`) |
 | `00_BRIEF.md` | the design brief, corrections list, and empirical findings |
