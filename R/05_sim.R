@@ -47,9 +47,15 @@ cgr_operating <- function(n_trials = 500, n = 230, p_cg = 0.7,
     dte <- as.logical(z[1]); aeb <- as.logical(z[2])
     truth <- if (dte) 3 else 0
     adj <- unadj <- numeric(n_trials)
-    cov <- fav <- sig <- logical(n_trials)
+    cov <- fav <- sig <- valid <- logical(n_trials)
     for (i in seq_len(n_trials)) {
       d  <- sim_aeb(n, p_cg, dte, aeb, noise)
+      # At a high correct-guess rate with small n, a wrong-guess stratum can come
+      # up empty, and the estimand is then undefined. Skip that trial rather than
+      # crash - the RATE of such trials is itself a warning that CGR adjustment
+      # is fragile at these parameters, and it is reported below.
+      if (!all(STRATA %in% paste0(d$condition, d$guess))) next
+      valid[i] <- TRUE
       st <- cgr_strata(d); rat <- cgr_ratios(st)
       mu <- lapply(st, nig_draws, n_draws = n_draws)
       dd <- cgr_delta(0.5, mu, rat$r, rat$s)
@@ -61,12 +67,14 @@ cgr_operating <- function(n_trials = 500, n = 230, p_cg = 0.7,
       unadj[i] <- mean(a) - mean(b)
       sig[i]   <- stats::t.test(a, b, var.equal = TRUE)$p.value < 0.05
     }
+    v <- which(valid); nv <- length(v)
+    m <- function(x) if (nv) mean(x[v]) else NA_real_
     data.frame(DTE = z[1], AEB = z[2], true = truth,
-               unadj_mean = mean(unadj), unadj_bias = mean(unadj) - truth,
-               adj_mean = mean(adj), adj_bias = mean(adj) - truth,
-               adj_rmse = sqrt(mean((adj - truth)^2)),
-               coverage95 = mean(cov), p_fav_gt_95 = mean(fav),
-               freq_sig = mean(sig))
+               unadj_mean = m(unadj), unadj_bias = m(unadj) - truth,
+               adj_mean = m(adj), adj_bias = m(adj) - truth,
+               adj_rmse = if (nv) sqrt(mean((adj[v] - truth)^2)) else NA_real_,
+               coverage95 = m(cov), p_fav_gt_95 = m(fav), freq_sig = m(sig),
+               empty_stratum_rate = round(mean(!valid), 4), n_valid = nv)
   })
   out <- do.call(rbind, rows); rownames(out) <- NULL; out
 }

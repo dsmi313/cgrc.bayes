@@ -131,6 +131,19 @@ likelihoods and reports the estimated nu. Result: nu ~ 18, so the t collapses
 toward the normal - the Gaussian conclusion is robust. `cgr_jags()` now exposes
 the posterior-mean nu via `attr(out, "nu")`.
 
+### CH-17  cgr_operating() crashed on empty strata  [BREAKING - was fatal]
+`cgr_operating(n = 120, p_cg = 0.85, n_trials = 500)` - the exact "is CGR safe
+for my trial?" call advertised in the README and Section 15 - could abort with
+"empty stratum: PLAC; the estimand is undefined". At a high correct guess rate
+with small n, a wrong-guess stratum occasionally comes up empty in a simulated
+trial; `cgr_strata()` then throws and killed the whole run.
+**Fix:** the simulation loop skips degenerate trials instead of crashing and
+reports two new columns - `empty_stratum_rate` (fraction of trials with an empty
+stratum) and `n_valid` (trials actually used). The rate is 0 at n=230/p_cg=0.7
+but can exceed 0.5 for small, badly-unblinded designs, which is itself the
+"CGR adjustment is fragile here" signal the tool exists to give. Regression test
+added in tests/testthat/test-reproduction.R.
+
 ## Findings from the author's source code (2026-07-21)
 
 ### CH-16  Source code located: szb37/CorrectGuessRateCurve

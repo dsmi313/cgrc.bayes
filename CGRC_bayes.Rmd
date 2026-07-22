@@ -714,6 +714,14 @@ implementation outperforms the KDE implementation — Section 8 shows both targe
 the same quantity. A like-for-like comparison of the two procedures' operating
 characteristics has not been run; see Section 14.
 
+The output also carries an **`empty_stratum_rate`** column. At a high correct
+guess rate with small $n$, a wrong-guess stratum (e.g. placebo-guessed-active)
+can come up empty in a simulated trial, and the estimand is undefined there;
+`cgr_operating()` skips those trials and reports how often they occur. At
+$n = 230, p_{CG} = 0.7$ it is 0, but for a small, badly-unblinded trial it can be
+substantial — which is itself the answer to "is CGR adjustment safe for my
+design?". Run it at your own $n$ and $p_{CG}$ before trusting the adjustment.
+
 ## The generative-model ambiguity, resolved
 
 Equation 4 does not state whether the sd of the gated DTE/AEB terms applies to

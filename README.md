@@ -54,7 +54,10 @@ cgr_operating(n = 120, p_cg = 0.85, n_trials = 500)   # bias, RMSE, 95% coverage
 `cgrc()` returns the CGR-adjusted estimate (at perfect blinding, CGR 0.50), a
 95% credible interval, and the posterior probability the effect is favourable.
 `cgr_operating()` tells you whether that adjustment is trustworthy for a trial of
-that size and blinding quality in the first place.
+that size and blinding quality in the first place — including an
+`empty_stratum_rate` column: at a high guess rate with small `n`, a wrong-guess
+stratum can come up empty and the estimand is undefined, so a high rate there is
+a warning that CGR adjustment is fragile for your design.
 
 ## Function reference
 

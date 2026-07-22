@@ -48,6 +48,20 @@ test_that("the observed CGR is 0.647, NOT the quoted 0.72", {
   expect_equal(mean(pl$condition == pl$guess), 0.7234, tolerance = 0.001)
 })
 
+test_that("cgr_operating survives empty strata and reports the rate", {
+  skip_on_cran()
+  # high guess rate + tiny n: wrong-guess strata (e.g. PLAC) are often empty and
+  # the estimand is undefined there. cgr_operating must skip, not crash.
+  r <- cgr_operating(n = 36, p_cg = 0.95, n_trials = 40, n_draws = 500)
+  expect_true(all(c("empty_stratum_rate", "n_valid") %in% names(r)))
+  expect_true(all(is.finite(r$empty_stratum_rate)))
+  expect_true(all(r$empty_stratum_rate >= 0 & r$empty_stratum_rate <= 1))
+  expect_true(all(r$n_valid <= 40))
+  # benign params: no empty strata at all
+  r2 <- cgr_operating(n = 230, p_cg = 0.7, n_trials = 20, n_draws = 500)
+  expect_true(all(r2$empty_stratum_rate == 0))
+})
+
 test_that("cgr_kde_curve returns a full grid of estimates and p-values", {
   skip_on_cran()
   set.seed(7)
