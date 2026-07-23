@@ -870,6 +870,12 @@ and 95% credible interval. There is no bright-line threshold; these are
 continuous probabilities, deliberately not re-collapsed into a
 "significant / not" verdict.
 
+The default $\delta$ is **half an outcome standard deviation** — the minimum
+important difference Norman (2003) defends and the one Szigeti's own 2024
+escitalopram trial adopts — so "meaningful" reads as *clinically* meaningful,
+not merely non-zero. That is a deliberately demanding bar; `delta_sd_frac`
+narrows it if a smaller difference matters for a given outcome.
+
 ```{r headline}
 set.seed(2)
 h <- cgrc_headline(panas, direction = 1, n_draws = N_DRAWS)
@@ -883,11 +889,13 @@ data.frame(
 cat(h$text)
 ```
 
-The correction moves both probabilities down: the raw signal is inflated by the
-expectancy that correct guessing carries, and removing it shrinks the effect
-toward — but for PANAS not through — zero. That drop is the whole point of the
-method, stated as a probability rather than hidden inside a shifted point
-estimate.
+This is where the two questions come apart. PANAS is very likely favourable in
+*direction* — and the blinding correction pulls even that down, because the raw
+signal is inflated by the expectancy correct guessing carries. But the *size* of
+the effect is small against a half-SD bar, so the probability it is clinically
+**meaningful** is low even before correction and near zero after it. A p-value,
+speaking only to direction, would have reported the first number and stayed
+silent on the second — which is exactly the number a trialist needs.
 
 ---
 

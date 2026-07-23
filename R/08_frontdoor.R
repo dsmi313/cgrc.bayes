@@ -40,9 +40,12 @@ plot.cgrc <- function(x, ...) {
 # Each is reported at the observed CGR (raw) and at CGR 0.50 (perfect blinding),
 # with the adjusted point estimate and 95% CrI. No bright-line threshold is
 # imposed - these are continuous probabilities, deliberately not turned back into
-# a "significant/not" verdict. delta defaults to 0.1 * outcome SD; direction =
-# +1 if higher scores are better, -1 if lower are better.
-cgrc_headline <- function(df, direction = 1, delta = NULL, delta_sd_frac = 0.1,
+# a "significant/not" verdict. delta defaults to 0.5 * outcome SD: half a standard
+# deviation is the minimum important difference Norman (2003) argues for and the
+# one Szigeti's own 2024 escitalopram trial adopts, so "meaningful" here means
+# clinically meaningful rather than merely non-zero. Narrow delta_sd_frac for a
+# stricter view. direction = +1 if higher scores are better, -1 if lower are better.
+cgrc_headline <- function(df, direction = 1, delta = NULL, delta_sd_frac = 0.5,
                           n_draws = 20000, prior = list()) {
   st  <- cgr_strata(df); rat <- cgr_ratios(st)
   if (is.null(delta)) delta <- delta_sd_frac * stats::sd(df$value)
