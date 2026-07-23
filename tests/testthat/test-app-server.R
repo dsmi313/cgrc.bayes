@@ -33,6 +33,27 @@ test_that("Panel B analyses an uploaded trial and the identity holds", {
   })
 })
 
+test_that("Panel B fails gracefully when an uploaded trial has an empty stratum", {
+  skip_if_not(requireNamespace("shiny", quietly = TRUE), "shiny not installed")
+  app_dir <- system.file("app", package = "cgrc.bayes")
+  skip_if(app_dir == "", "app not installed")
+  # a high-CGR trial where nobody on placebo guessed active -> PLAC is empty and
+  # the estimand is undefined. Must be caught, not crash the app.
+  csv <- data.frame(
+    arm     = c(rep("drug", 20), rep("placebo", 20)),
+    guess   = c(rep("drug", 20), rep("placebo", 20)),   # zero discordant guesses
+    outcome = rnorm(40))
+  f <- tempfile(fileext = ".csv"); write.csv(csv, f, row.names = FALSE)
+  shiny::testServer(app_dir, {
+    session$setInputs(csv = list(datapath = f, name = "t.csv"),
+                      col_cond = "arm", col_guess = "guess", col_value = "outcome",
+                      direction = "1", rope = 0.1, analyse = 1)
+    ff <- safe_fit()
+    expect_true(inherits(ff, "cgrc_err"))
+    expect_match(as.character(ff), "empty stratum")
+  })
+})
+
 test_that("Panel B errors clearly on an unmappable coding", {
   skip_if_not(requireNamespace("shiny", quietly = TRUE), "shiny not installed")
   app_dir <- system.file("app", package = "cgrc.bayes")

@@ -157,15 +157,23 @@ server <- function(input, output, session) {
     minstr <- cgr_min_stratum(input$n, input$pcg)
     degen  <- if (no_lut) NA else
       cgrc_op_at(LUT, input$n, input$pcg, as.numeric(input$eff), 0, 1, input$mu_aeb)$empty_stratum_rate
-    warn <- minstr < 15 || (!is.na(degen) && degen > 0.02)
+    thin       <- minstr < 15
+    high_degen <- !is.na(degen) && degen > 0.02
+    warn <- thin || high_degen
+    extra <- if (high_degen) sprintf(paste0(
+      " For a real trial of this design, roughly <b>%.0f%%</b> of the time a ",
+      "wrong-guess stratum comes up empty and CGRC cannot be computed at all — ",
+      "so the rates above are <i>conditional on the trials where it could be</i>."),
+      100 * degen)
+      else if (thin) paste0(" CGR adjustment is fragile at this design and can be",
+                            " undefined for some trials.")
+      else ""
     div(class = if (warn) "verdict warn feas" else "verdict feas",
       HTML(sprintf(
         "<b>Feasibility.</b> Expected smallest stratum: <b>~%.0f</b> participants%s.
          Simulated trials with an empty stratum: <b>%s</b>.%s",
-        minstr, if (minstr < 15) " (thin — CGR adjustment is fragile)" else "",
-        if (is.na(degen)) "n/a" else sprintf("%.1f%%", 100 * degen),
-        if (warn) " CGR adjustment may not be reliably computable at this design."
-        else "")))
+        minstr, if (thin) " (thin)" else "",
+        if (is.na(degen)) "n/a" else sprintf("%.1f%%", 100 * degen), extra)))
   })
 
   output$power_plot <- renderPlot({
