@@ -2,8 +2,8 @@ Package: cgrc.bayes
 Type: Package
 Title: Bayesian Implementation of the Correct Guess Rate Curve
 Version: 0.1.0
-Authors@R: person("CGRC", "contributors", role = c("aut", "cre"),
-    email = "noreply@example.com")
+Authors@R: person("Dave", "Smith", role = c("aut", "cre"),
+    email = "fish.dzs0017@gmail.com")
 Description: A reproduction of the Correct Guess Rate Curve (CGRC) method of
     Szigeti et al. (2023) and an alternative implementation that expresses the
     uncertainty around the CGR-adjusted treatment effect as a posterior
