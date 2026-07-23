@@ -45,8 +45,10 @@ export(cgr_rope_sensitivity)
 
 # front door (R/08_frontdoor.R)
 export(cgrc)
+export(cgrc_headline)
 S3method(print, cgrc)
 S3method(plot, cgrc)
+S3method(print, cgrc_headline)
 
 # Shiny app support (R/09_app.R)
 export(cgrc_lookup)

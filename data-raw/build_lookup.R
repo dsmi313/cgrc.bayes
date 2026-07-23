@@ -37,6 +37,11 @@ key <- function(d) paste(d$n, d$p_cg, d$true_effect, d$mu_aeb, sep = "|")
 
 existing <- if (file.exists(DEST)) readRDS(DEST) else NULL
 if (!is.null(existing) && !"mu_aeb" %in% names(existing)) existing$mu_aeb <- 7.7
+# if the existing table predates a column we now compute, recompute everything
+if (!is.null(existing) && !"p_fav_gt_975" %in% names(existing)) {
+  message("existing lookup lacks p_fav_gt_975 (matched comparator); recomputing all cells")
+  existing <- NULL
+}
 have <- if (is.null(existing)) character(0) else unique(key(existing))
 todo <- target[!key(target) %in% have, , drop = FALSE]
 cat(sprintf("target cells: %d   already present: %d   to compute: %d\n",

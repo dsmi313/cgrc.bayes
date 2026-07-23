@@ -58,13 +58,21 @@ cgrc_op_at <- function(lut, n, p_cg, true_effect, dte, aeb, mu_aeb = 7.7) {
   eff  <- effs[which.min(abs(effs - true_effect))]
   sub  <- sub[sub$true_effect == eff, ]
   if (!nrow(sub)) stop("no lookup rows for that scenario", call. = FALSE)
+  # a matched-to-two-sided-p<0.05 comparator is available in newer lookups
   metrics <- c("unadj_bias", "adj_bias", "adj_rmse", "coverage95",
                "p_fav_gt_95", "freq_sig", "empty_stratum_rate")
+  if ("p_fav_gt_975" %in% names(sub)) metrics <- c(metrics, "p_fav_gt_975")
   vals <- vapply(metrics, function(m) .cgrc_bilin(sub, "n", "p_cg", m, n, p_cg),
                  numeric(1))
   on_grid <- n %in% sub$n && p_cg %in% sub$p_cg
+  # clamped: the requested n or p_cg is OUTSIDE this level's grid, so an edge
+  # value is being reported under the requested label (e.g. n=60 is not
+  # simulated at mu_aeb != 7.7, so it reads the n=80 row). Flag it, do not hide.
+  clamped <- n < min(sub$n) || n > max(sub$n) ||
+             p_cg < min(sub$p_cg) || p_cg > max(sub$p_cg)
   cbind(data.frame(n = n, p_cg = p_cg, true_effect = eff, mu_aeb = ma,
-                   DTE = dte, AEB = aeb, interpolated = !on_grid),
+                   DTE = dte, AEB = aeb,
+                   interpolated = !on_grid, clamped = clamped),
         as.data.frame(as.list(vals)))
 }
 

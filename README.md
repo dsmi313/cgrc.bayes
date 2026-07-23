@@ -105,6 +105,7 @@ a warning that CGR adjustment is fragile for your design.
 | `R/05_sim.R` | AEB generative model and operating-characteristics study |
 | `R/06_plot.R` | figures and summary tables |
 | `R/07_rope.R` | `cgr_rope()` region-of-practical-equivalence decomposition |
+| `R/08_frontdoor.R` | `cgrc()` one-call adjuster and `cgrc_headline()` two-probability plain-language summary |
 | `R/09_app.R` | Shiny app support: lookup accessor, interpolation, verdict, input normalisation |
 | `inst/app/app.R` | the Shiny app (Design + Analyse panels) |
 | `data-raw/build_lookup.R` | precompute the operating-characteristics grid (run once, ~1h) |

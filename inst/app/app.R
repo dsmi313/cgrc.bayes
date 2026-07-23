@@ -24,13 +24,23 @@ CELL_LABEL <- c("00" = "no effect, no expectancy",
                 "01" = "no effect, pure expectancy",
                 "11" = "real effect + expectancy")
 
+## ---- named thresholds (were magic numbers inline) ---------------------------
+THIN_STRATUM  <- 15     # expected smallest stratum below this = fragile design
+DEGEN_WARN    <- 0.02   # > this share of empty-stratum trials triggers a warning
+P_FAV_LEVEL   <- 0.95   # posterior P(favourable) reporting level (one-sided)
+P_FAV_MATCHED <- 0.975  # matched to a two-sided frequentist test at p < 0.05
+MATCHED_OK    <- !is.null(LUT) && "p_fav_gt_975" %in% names(LUT)  # lookup has it?
+
 ## ---- helpers used only for display -----------------------------------------
 
 op_table_A <- function(lut, n, p_cg, eff, mu_aeb) {
   rows <- do.call(rbind, lapply(list(c(0,0), c(1,0), c(0,1), c(1,1)), function(z)
     cgrc_op_at(lut, n, p_cg, eff, z[1], z[2], mu_aeb)))
+  # honesty markers: * interpolated between grid points; dagger = outside this
+  # expectancy level's grid (an edge value is shown under the requested label).
+  mark <- ifelse(rows$clamped, " †", ifelse(rows$interpolated, " *", ""))
   data.frame(
-    scenario = CELL_LABEL[paste0(rows$DTE, rows$AEB)],
+    scenario = paste0(CELL_LABEL[paste0(rows$DTE, rows$AEB)], mark),
     `true effect` = round(ifelse(rows$DTE == 1, eff, 0), 2),
     `adjusted bias` = round(rows$adj_bias, 2),
     `95% coverage` = round(rows$coverage95, 3),
@@ -63,10 +73,15 @@ ui <- navbarPage(
                     value = 0.85, step = 0.01),
         selectInput("eff", "True effect size to detect (points)",
                     choices = EFFS, selected = 3),
-        sliderInput("mu_aeb", "Expectancy magnitude (points)",
-                    min = 0, max = 20, value = 7.7, step = 0.5),
-        div(class = "muted", "7.7 = the microdose-trial reference value",
-            "(Szigeti's calibration, not a universal constant)."),
+        # Discrete, because the lookup only holds these three levels; a continuous
+        # slider that snaps would show a resolution it does not have.
+        radioButtons("mu_aeb", "Expectancy magnitude (points)",
+                     choices = c("3.85  (half the microdose reference)" = 3.85,
+                                 "7.7  (microdose reference, Szigeti)"   = 7.7,
+                                 "15.4  (double the reference)"          = 15.4),
+                     selected = 7.7),
+        div(class = "muted",
+            "7.7 is Szigeti's microdose calibration, not a universal constant."),
         uiOutput("inflation_note"),
         tags$hr(),
         helpText(class = "muted",
@@ -101,6 +116,10 @@ ui <- navbarPage(
           "in the expectancy rows the unadjusted column is mostly detecting",
           "expectancy, not drug, so do not read it as power."),
         tableOutput("opchar"),
+        div(class = "muted",
+            "* interpolated between simulated grid points.",
+            "† outside the simulated grid for this expectancy level — the nearest",
+            "edge value is shown (e.g. n=60 is only simulated at the 7.7 level)."),
         uiOutput("exact_out")
       )
     )
@@ -140,7 +159,7 @@ server <- function(input, output, session) {
 
   ## ---- Panel A ----
   output$inflation_note <- renderUI({
-    inf <- cgr_aeb_inflation(input$mu_aeb, input$pcg)
+    inf <- cgr_aeb_inflation(as.numeric(input$mu_aeb), input$pcg)
     div(class = "muted", style = "margin-top:6px;",
         HTML(sprintf("At your CGR of %.2f, this inflates an <b>unadjusted</b>
                       estimate by <b>%.1f points</b>.", input$pcg, inf)))
@@ -150,15 +169,15 @@ server <- function(input, output, session) {
     if (no_lut) return(div(class = "verdict warn",
       "Lookup table not built. Run data-raw/build_lookup.R, then reinstall."))
     div(class = "verdict",
-        cgrc_verdict(LUT, input$n, input$pcg, as.numeric(input$eff), input$mu_aeb))
+        cgrc_verdict(LUT, input$n, input$pcg, as.numeric(input$eff), as.numeric(input$mu_aeb)))
   })
 
   output$feasibility <- renderUI({
     minstr <- cgr_min_stratum(input$n, input$pcg)
     degen  <- if (no_lut) NA else
-      cgrc_op_at(LUT, input$n, input$pcg, as.numeric(input$eff), 0, 1, input$mu_aeb)$empty_stratum_rate
-    thin       <- minstr < 15
-    high_degen <- !is.na(degen) && degen > 0.02
+      cgrc_op_at(LUT, input$n, input$pcg, as.numeric(input$eff), 0, 1, as.numeric(input$mu_aeb))$empty_stratum_rate
+    thin       <- minstr < THIN_STRATUM
+    high_degen <- !is.na(degen) && degen > DEGEN_WARN
     warn <- thin || high_degen
     extra <- if (high_degen) sprintf(paste0(
       " For a real trial of this design, roughly <b>%.0f%%</b> of the time a ",
@@ -199,30 +218,39 @@ server <- function(input, output, session) {
   output$tradeoff_plot <- renderPlot({
     if (no_lut) return(NULL)
     eff <- as.numeric(input$eff)
-    pw  <- cgrc_op_at(LUT, input$n, input$pcg, eff, 1, 0)              # real effect, no exp
-    fp  <- cgrc_op_at(LUT, input$n, input$pcg, eff, 0, 1, input$mu_aeb)  # pure expectancy
+    pw  <- cgrc_op_at(LUT, input$n, input$pcg, eff, 1, 0)
+    fp  <- cgrc_op_at(LUT, input$n, input$pcg, eff, 0, 1, as.numeric(input$mu_aeb))
+    # The frequentist rate is a TWO-SIDED t-test at p<0.05. Its matched Bayesian
+    # comparator is posterior P(favourable) > 0.975 (not 0.95). Use the matched
+    # column when the lookup has it; otherwise fall back and say so.
+    adj_col <- if (MATCHED_OK) "p_fav_gt_975" else "p_fav_gt_95"
+    adj_lab <- if (MATCHED_OK) "CGR-adjusted (posterior P>0.975)"
+               else "CGR-adjusted (posterior P>0.95)"
+    cap <- if (MATCHED_OK)
+      "Thresholds are matched: two-sided p<0.05 vs its Bayesian equivalent P>0.975."
+    else paste("Note: unadjusted is two-sided p<0.05; adjusted is P>0.95, a looser",
+               "bar than the matched P>0.975. Read within-analysis, not as a race.")
     df <- data.frame(
-      metric = factor(c("false positive\n(pure expectancy)", "false positive\n(pure expectancy)",
-                        "power\n(real effect)", "power\n(real effect)"),
+      metric = factor(rep(c("false positive\n(pure expectancy)",
+                            "power\n(real effect)"), each = 2),
                       levels = c("false positive\n(pure expectancy)", "power\n(real effect)")),
-      analysis = c("unadjusted", "CGR-adjusted", "unadjusted", "CGR-adjusted"),
-      rate = c(fp$freq_sig, fp$p_fav_gt_95, pw$freq_sig, pw$p_fav_gt_95))
-    df$analysis <- factor(df$analysis, levels = c("unadjusted", "CGR-adjusted"))
+      analysis = factor(c("unadjusted (p<0.05, two-sided)", adj_lab),
+                        levels = c("unadjusted (p<0.05, two-sided)", adj_lab)),
+      rate = c(fp$freq_sig, fp[[adj_col]], pw$freq_sig, pw[[adj_col]]))
     ggplot(df, aes(metric, rate, fill = analysis)) +
       geom_col(position = position_dodge(0.7), width = 0.62) +
       geom_text(aes(label = sprintf("%.0f%%", 100 * rate)),
                 position = position_dodge(0.7), vjust = -0.4, size = 3.6) +
-      scale_fill_manual(values = c(unadjusted = "#C0392B", `CGR-adjusted` = "#2471A3")) +
-      scale_y_continuous(limits = c(0, 1.05), labels = scales::percent) +
-      labs(x = NULL, y = NULL, fill = NULL,
-           caption = "Adjustment trades a large drop in expectancy-driven false positives for some power.") +
+      scale_fill_manual(values = setNames(c("#C0392B", "#2471A3"), levels(df$analysis))) +
+      scale_y_continuous(limits = c(0, 1.08), labels = scales::percent) +
+      labs(x = NULL, y = NULL, fill = NULL, caption = cap) +
       theme_minimal(base_size = 13) +
       theme(legend.position = "top", panel.grid.minor = element_blank())
   })
 
   output$opchar <- renderTable({
     if (no_lut) return(NULL)
-    op_table_A(LUT, input$n, input$pcg, as.numeric(input$eff), input$mu_aeb)
+    op_table_A(LUT, input$n, input$pcg, as.numeric(input$eff), as.numeric(input$mu_aeb))
   }, digits = 3)
 
   ## exact simulation, only on demand
@@ -231,7 +259,7 @@ server <- function(input, output, session) {
     withProgress(message = "Running 500 simulated trials x 4 scenarios...",
                  value = 0.3, {
       op <- cgr_operating(n_trials = 500, n = input$n, p_cg = input$pcg,
-                          mu_dte = as.numeric(input$eff), mu_aeb = input$mu_aeb,
+                          mu_dte = as.numeric(input$eff), mu_aeb = as.numeric(input$mu_aeb),
                           noise = "all", seed = 1)
       incProgress(0.7)
       exact_rv(op)
@@ -280,6 +308,10 @@ server <- function(input, output, session) {
     grid <- sort(unique(c(seq(0, 1, length.out = 101), cgr_observed(cgr_strata(trial)))))
     list(trial = trial,
          fit = cgrc(trial, n_draws = 8000, direction = dir),
+         # the two interpretable probabilities, before/after the blinding
+         # correction, at the same ROPE width delta the user chose
+         head = cgrc_headline(trial, direction = dir, delta_sd_frac = input$rope,
+                              n_draws = 8000),
          rope = cgr_rope(trial, grid = grid, n_draws = 8000,
                          delta_sd_frac = input$rope, direction = dir),
          sens = cgr_rope_sensitivity(trial, at_cgr = 0.5, n_draws = 6000,
@@ -293,6 +325,7 @@ server <- function(input, output, session) {
       "an outcome value, map them on the left, then click Analyse."))
     tagList(
       uiOutput("b_error"),
+      uiOutput("b_headline"),
       fluidRow(column(5, h4("Strata (from your data)"), tableOutput("b_strata")),
                column(7, h4("Adjusted vs unadjusted"), tableOutput("b_summary"))),
       uiOutput("b_identity"),
@@ -308,6 +341,30 @@ server <- function(input, output, session) {
   output$b_error <- renderUI({
     f <- safe_fit()
     if (inherits(f, "cgrc_err")) div(class = "verdict warn", paste("Could not analyse:", f))
+  })
+
+  # The headline: two plain probabilities, before and after the blinding
+  # correction. This is the interpretable answer - "is there an effect" and
+  # "is it big enough to matter" - that a single p-value cannot give.
+  output$b_headline <- renderUI({
+    f <- safe_fit(); if (inherits(f, "cgrc_err")) return(NULL)
+    h <- f$head; pct <- function(p) sprintf("%.0f%%", 100 * p)
+    div(class = "verdict",
+      HTML(sprintf(
+        "<b>Your trial, in two probabilities.</b><br>
+         <table style='width:100%%;margin-top:6px;border-collapse:collapse;'>
+         <tr style='color:#666;'><td></td><td><b>at your CGR (raw)</b></td>
+             <td><b>at perfect blinding</b></td></tr>
+         <tr><td>probability of a favourable effect</td>
+             <td><b>%s</b></td><td><b>%s</b></td></tr>
+         <tr><td>probability it is meaningful (beyond %.2g pts)</td>
+             <td><b>%s</b></td><td><b>%s</b></td></tr></table>
+         <div class='muted' style='margin-top:8px;'>%s</div>",
+        pct(h$p_dir_obs), pct(h$p_dir_blind),
+        h$delta, pct(h$p_meaningful_obs), pct(h$p_meaningful_blind),
+        paste(h$text,
+              "These are continuous probabilities — deliberately no",
+              "significant/not cut-off."))))
   })
 
   output$b_strata <- renderTable({

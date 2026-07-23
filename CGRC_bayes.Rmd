@@ -853,6 +853,42 @@ line at 0.95 is a descriptive marker, not a universal cutoff.
 For outcomes where lower scores are better (QIDS, STAIT), pass
 `direction = -1` so favourability is declared rather than assumed.
 
+## The headline: two probabilities a p-value cannot give you
+
+The plot above carries the full posterior, but a trialist reading a result wants
+two numbers, and a p-value only ever addresses the first:
+
+* **Is there an effect?** $P(\text{favourable}) = P(\text{direction}\cdot\Delta > 0)$
+  — the posterior twin of a one-sided $p$-value.
+* **Is it big enough to care?** $P(\text{meaningful}) = P(\text{direction}\cdot\Delta > \delta)$
+  — a question a $p$-value structurally cannot answer, because it never speaks
+  to magnitude.
+
+`cgrc_headline()` reports both, each **before** the blinding correction (at the
+observed CGR) and **after** it (at CGR $=0.5$), with the adjusted point estimate
+and 95% credible interval. There is no bright-line threshold; these are
+continuous probabilities, deliberately not re-collapsed into a
+"significant / not" verdict.
+
+```{r headline}
+set.seed(2)
+h <- cgrc_headline(panas, direction = 1, n_draws = N_DRAWS)
+
+# the two questions, before and after correcting to perfect blinding
+data.frame(
+  question = c("P(favourable effect)", "P(meaningful, beyond delta)"),
+  raw            = round(c(h$p_dir_obs,   h$p_meaningful_obs),   2),
+  perfect_blind  = round(c(h$p_dir_blind, h$p_meaningful_blind), 2))
+
+cat(h$text)
+```
+
+The correction moves both probabilities down: the raw signal is inflated by the
+expectancy that correct guessing carries, and removing it shrinks the effect
+toward — but for PANAS not through — zero. That drop is the whole point of the
+method, stated as a probability rather than hidden inside a shifted point
+estimate.
+
 ---
 
 # Sensitivity analyses

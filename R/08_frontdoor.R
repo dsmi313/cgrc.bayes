@@ -31,3 +31,43 @@ print.cgrc <- function(x, ...) {
 plot.cgrc <- function(x, ...) {
   cgr_plot(x$curve, obs_cgr = x$observed_cgr, ...)
 }
+
+# cgrc_headline(df): the most interpretable summary of a CGR-adjusted analysis -
+# TWO plain probabilities, before and after the blinding correction, because a
+# trialist has two questions the p-value conflates:
+#   * "is there an effect?"       -> P(favourable) = P(direction * Delta > 0)
+#   * "is it big enough to care?"  -> P(meaningful) = P(direction * Delta > delta)
+# Each is reported at the observed CGR (raw) and at CGR 0.50 (perfect blinding),
+# with the adjusted point estimate and 95% CrI. No bright-line threshold is
+# imposed - these are continuous probabilities, deliberately not turned back into
+# a "significant/not" verdict. delta defaults to 0.1 * outcome SD; direction =
+# +1 if higher scores are better, -1 if lower are better.
+cgrc_headline <- function(df, direction = 1, delta = NULL, delta_sd_frac = 0.1,
+                          n_draws = 20000, prior = list()) {
+  st  <- cgr_strata(df); rat <- cgr_ratios(st)
+  if (is.null(delta)) delta <- delta_sd_frac * stats::sd(df$value)
+  mu  <- lapply(st, function(y)
+    do.call(nig_draws, c(list(y = y, n_draws = n_draws), prior)))
+  o   <- cgr_observed(st)
+  d_obs <- cgr_delta(o,   mu, rat$r, rat$s)
+  d_bl  <- cgr_delta(0.5, mu, rat$r, rat$s)
+  eff_obs <- direction * d_obs; eff_bl <- direction * d_bl   # + = favourable
+  q <- function(x, p) unname(stats::quantile(x, p))
+  res <- list(
+    observed_cgr = o, delta = delta, direction = direction,
+    adj_est = mean(d_bl), adj_lo = q(d_bl, 0.025), adj_hi = q(d_bl, 0.975),
+    p_dir_obs        = mean(eff_obs > 0),     p_dir_blind        = mean(eff_bl > 0),
+    p_meaningful_obs = mean(eff_obs > delta), p_meaningful_blind = mean(eff_bl > delta))
+  dtxt <- trimws(sprintf("%.2g", delta))
+  unit <- if (identical(dtxt, "1")) "point" else "points"
+  res$text <- sprintf(paste0(
+    "Raw, this trial shows a %.0f%% probability of a favourable effect and %.0f%% ",
+    "that it is meaningful (beyond %s %s). Corrected to perfect blinding, ",
+    "those become %.0f%% and %.0f%% (adjusted effect %.2f, 95%% CrI %.2f to %.2f)."),
+    100 * res$p_dir_obs, 100 * res$p_meaningful_obs, dtxt, unit,
+    100 * res$p_dir_blind, 100 * res$p_meaningful_blind,
+    res$adj_est, res$adj_lo, res$adj_hi)
+  structure(res, class = "cgrc_headline")
+}
+
+print.cgrc_headline <- function(x, ...) { cat(x$text, "\n"); invisible(x) }

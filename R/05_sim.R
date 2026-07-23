@@ -48,7 +48,7 @@ cgr_operating <- function(n_trials = 500, n = 230, p_cg = 0.7,
     dte <- as.logical(z[1]); aeb <- as.logical(z[2])
     truth <- if (dte) mu_dte else 0
     adj <- unadj <- numeric(n_trials)
-    cov <- fav <- sig <- valid <- logical(n_trials)
+    cov <- fav <- fav975 <- sig <- valid <- logical(n_trials)
     for (i in seq_len(n_trials)) {
       d  <- sim_aeb(n, p_cg, dte, aeb, noise, mu_dte = mu_dte, mu_aeb = mu_aeb)
       # At a high correct-guess rate with small n, a wrong-guess stratum can come
@@ -61,9 +61,11 @@ cgr_operating <- function(n_trials = 500, n = 230, p_cg = 0.7,
       mu <- lapply(st, nig_draws, n_draws = n_draws)
       dd <- cgr_delta(0.5, mu, rat$r, rat$s)
       q  <- stats::quantile(dd, c(0.025, 0.975))
+      pd <- mean(dd > 0)                    # posterior probability of direction
       adj[i] <- mean(dd)
       cov[i] <- q[1] <= truth && truth <= q[2]
-      fav[i] <- mean(dd > 0) > 0.95
+      fav[i]    <- pd > 0.95                # one-sided flag (looser)
+      fav975[i] <- pd > 0.975               # matched to two-sided freq p<0.05
       a <- d$value[d$condition == "AC"]; b <- d$value[d$condition == "PL"]
       unadj[i] <- mean(a) - mean(b)
       sig[i]   <- stats::t.test(a, b, var.equal = TRUE)$p.value < 0.05
@@ -74,7 +76,8 @@ cgr_operating <- function(n_trials = 500, n = 230, p_cg = 0.7,
                unadj_mean = m(unadj), unadj_bias = m(unadj) - truth,
                adj_mean = m(adj), adj_bias = m(adj) - truth,
                adj_rmse = if (nv) sqrt(mean((adj[v] - truth)^2)) else NA_real_,
-               coverage95 = m(cov), p_fav_gt_95 = m(fav), freq_sig = m(sig),
+               coverage95 = m(cov), p_fav_gt_95 = m(fav),
+               p_fav_gt_975 = m(fav975), freq_sig = m(sig),
                empty_stratum_rate = round(mean(!valid), 4), n_valid = nv)
   })
   out <- do.call(rbind, rows); rownames(out) <- NULL; out
