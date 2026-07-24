@@ -185,9 +185,10 @@ test_that("Panel A switches to the UNKNOWN design lookup when u > 0", {
     expect_match(output$verdict$html, "UNKNOWN rate 30")
     expect_match(output$feasibility$html, "six strata")
     session$setInputs(n_trials = 30, run_exact = 1)
-    op <- exact_rv()
-    expect_equal(nrow(op), 4L)
-    expect_true("u" %in% names(op))                                  # UNKNOWN model was used
+    e <- exact_rv()                                                  # now a settings snapshot
+    expect_equal(nrow(e$op), 4L)
+    expect_true("u" %in% names(e$op))                               # UNKNOWN model was used
+    expect_identical(e$mode, "unknown")
   })
 })
 
@@ -207,6 +208,27 @@ test_that("Panel B runs an on-demand UNKNOWN design check (not the binary lookup
     expect_equal(attr(op, "n_trials"), 40)              # uses the trial slider
     expect_true(all(op$coverage95 > 0.8 & op$coverage95 <= 1))
     expect_true("empty_stratum_rate" %in% names(op))
+  })
+})
+
+test_that("exact simulation stores a run and matches the current settings", {
+  skip_if_not(requireNamespace("shiny", quietly = TRUE), "shiny not installed")
+  skip_on_cran()
+  app_dir <- system.file("app", package = "cgrc.bayes")
+  skip_if(app_dir == "", "app not installed")
+
+  shiny::testServer(app_dir, {
+    session$setInputs(n = 200, pcg = 0.7, eff = 3, mu_aeb = 7.7, n_trials = 40)
+    session$setInputs(run_exact = 1)
+    e <- exact_rv()
+    expect_false(is.null(e))
+    expect_equal(e$n_trials, 40)
+    expect_equal(nrow(e$op), 4)            # four scenarios
+    expect_equal(e$seed, 1L)               # reproducible seed recorded
+    expect_false(is.null(e$time))          # timestamp recorded
+    expect_false(is.null(exact_match()))   # markers apply at these settings
+    session$setInputs(n = 300)             # change a setting
+    expect_true(is.null(exact_match()))    # stale run no longer decorates plots
   })
 })
 

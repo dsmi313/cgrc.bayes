@@ -39,9 +39,13 @@ sim_aeb <- function(n = 230, p_cg = 0.7, dte_on = FALSE, aeb_on = FALSE,
 # True Delta(0.5) equals the direct treatment effect: at perfect blinding the
 # guess distribution is identical in both arms, so the AEB term contributes
 # equally to each and cancels.
+# `direction` orients favourability (+1 higher-is-better, -1 lower-is-better) and
+# is applied identically to the Bayesian flags and the frequentist criterion, so
+# the two are compared on the SAME tail. At the default +1 every column is
+# byte-identical to the older two-sided build EXCEPT freq_sig (see below).
 cgr_operating <- function(n_trials = 500, n = 230, p_cg = 0.7,
                           noise = "all", n_draws = 4000, seed = 1,
-                          mu_dte = 3, mu_aeb = 7.7) {
+                          mu_dte = 3, mu_aeb = 7.7, direction = 1) {
   set.seed(seed)
   cfg <- list(c(0, 0), c(1, 0), c(0, 1), c(1, 1))
   rows <- lapply(cfg, function(z) {
@@ -61,14 +65,20 @@ cgr_operating <- function(n_trials = 500, n = 230, p_cg = 0.7,
       mu <- lapply(st, nig_draws, n_draws = n_draws)
       dd <- cgr_delta(0.5, mu, rat$r, rat$s)
       q  <- stats::quantile(dd, c(0.025, 0.975))
-      pd <- mean(dd > 0)                    # posterior probability of direction
+      pd <- mean(direction * dd > 0)        # posterior prob. of a FAVOURABLE effect
       adj[i] <- mean(dd)
       cov[i] <- q[1] <= truth && truth <= q[2]
-      fav[i]    <- pd > 0.95                # one-sided flag (looser)
-      fav975[i] <- pd > 0.975               # matched to two-sided freq p<0.05
+      fav[i]    <- pd > 0.95                # one-sided flag (standard)
+      fav975[i] <- pd > 0.975               # approx. matched to a two-sided p<0.05
       a <- d$value[d$condition == "AC"]; b <- d$value[d$condition == "PL"]
-      unadj[i] <- mean(a) - mean(b)
-      sig[i]   <- stats::t.test(a, b, var.equal = TRUE)$p.value < 0.05
+      raw_effect <- mean(a) - mean(b)
+      unadj[i] <- raw_effect
+      # Direction-MATCHED frequentist event: significant AND in the favourable
+      # direction. The Bayesian flags count only the favourable tail, so counting
+      # two-sided significance here (as older builds did) compared unlike tails and
+      # overstated the match. freq_sig is the ONLY column this changes at dir = +1.
+      sig[i] <- stats::t.test(a, b, var.equal = TRUE)$p.value < 0.05 &&
+                (direction * raw_effect) > 0
     }
     v <- which(valid); nv <- length(v)
     m <- function(x) if (nv) mean(x[v]) else NA_real_
@@ -155,7 +165,7 @@ sim_aeb_unknown <- function(n = 230, p_cg = 0.7, u = 0.2,
 # (the estimand is undefined) and counted, never fabricated.
 cgr_unknown_operating <- function(n_trials = 500, n = 230, p_cg = 0.7, u = 0.2,
                                   noise = "all", n_draws = 4000, seed = 1,
-                                  mu_dte = 3, mu_aeb = 7.7) {
+                                  mu_dte = 3, mu_aeb = 7.7, direction = 1) {
   set.seed(seed)
   cfg <- list(c(0, 0), c(1, 0), c(0, 1), c(1, 1))
   rows <- lapply(cfg, function(z) {
@@ -176,13 +186,17 @@ cgr_unknown_operating <- function(n_trials = 500, n = 230, p_cg = 0.7, u = 0.2,
         y <- st[[nm]]; if (length(y)) nig_draws(y, n_draws = n_draws) else NA_real_
       }), UNKNOWN_STRATA)
       dd <- cgr_unknown_delta(0.5, o$u_obs, mu, rat$r, rat$s, rat$t)
-      q  <- stats::quantile(dd, c(0.025, 0.975)); pd <- mean(dd > 0)
+      q  <- stats::quantile(dd, c(0.025, 0.975)); pd <- mean(direction * dd > 0)
       adj[i] <- mean(dd)
       cov[i] <- q[1] <= truth && truth <= q[2]
-      fav[i] <- pd > 0.95; fav975[i] <- pd > 0.975
+      fav[i] <- pd > 0.95; fav975[i] <- pd > 0.975   # matched flag, favourable tail
       a <- d$value[d$condition == "AC"]; b <- d$value[d$condition == "PL"]
-      unadj[i] <- mean(a) - mean(b)
-      sig[i]   <- stats::t.test(a, b, var.equal = TRUE)$p.value < 0.05
+      raw_effect <- mean(a) - mean(b)
+      unadj[i] <- raw_effect
+      # Direction-matched frequentist event (see cgr_operating): favourable tail
+      # only, so it compares like-for-like with the Bayesian flags.
+      sig[i] <- stats::t.test(a, b, var.equal = TRUE)$p.value < 0.05 &&
+                (direction * raw_effect) > 0
     }
     v <- which(valid); nv <- length(v)
     m <- function(x) if (nv) mean(x[v]) else NA_real_

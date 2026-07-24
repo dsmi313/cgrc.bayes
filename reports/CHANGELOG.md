@@ -256,6 +256,41 @@ extra UNKNOWN synonyms ("dont know", "no idea", "cant tell", ...).
 `cgr_unknown_independent()` gained an optional `seed`, recorded in the returned
 object. Default `NULL` preserves prior behaviour (an external `set.seed`).
 
+### CH-25  Direction-matched frequentist criterion  [BREAKING - changes `freq_sig`]
+**Was:** `cgr_operating()` / `cgr_unknown_operating()` counted a two-sided
+`t.test` `p < 0.05` as the frequentist "significant" event, and the app called
+posterior `P > 0.975` its "Bayesian equivalent".
+**Now:** the frequentist event is `p < 0.05 AND (direction * raw_effect) > 0` — a
+favourable-tail rate that counts the same tail the Bayesian flags count. Both
+`cgr_operating()` and `cgr_unknown_operating()` gained a `direction` argument.
+**Why:** the Bayesian criteria count only the favourable direction, so comparing
+them to two-sided significance overstated the match. The app language is now
+"approximately matched positive-tail thresholds", with an explicit note that the
+two use different estimators and are not inferentially identical.
+**Effect:** at `direction = +1` the RNG stream is unchanged, so **only** the
+`freq_sig` column moves — every other column (bias, RMSE, coverage,
+`p_fav_gt_95`, `p_fav_gt_975`) reproduces byte-for-byte. Materially this halves
+the null-cell rate (~0.05 two-sided → ~0.025 one tail); strongly-directional
+cells are unchanged. Both precomputed lookups were rebuilt at seed 1 with the
+corrected definition.
+
+### CH-26  Shiny app readability and honesty pass  [ADDITIVE - no estimand change]
+Larger fonts throughout (body 18px, headings 22-26px, controls 17-18px, plot base
+16) and a wider, responsive sidebar. Panel A now shows a four-level reliability
+category (reliable / caution / fragile / undefined) instead of a binary
+safe/unsafe verdict, all four expected stratum sizes, and the stated design
+assumptions; the operating table reports both `P > 0.95` and `P > 0.975` with
+clear labels; the "false positive (pure expectancy)" outcome is renamed "false
+treatment attribution"; and the exact simulation is shown side by side with the
+interpolated lookup (difference, valid sims, empty-stratum rate) with markers
+overlaid on the plots, a completion stamp, the seed, and a disabled button while
+running. Panel B adds a compact plain-language summary (adjusted effect flagged as
+a counterfactual), arm-specific correct-guess rates with a thin-stratum warning
+and a mapped-data preview, a visible seed, and downloads for the summary CSV, the
+CGR-curve CSV, a plot PNG, and a self-contained HTML report. New testable helpers:
+`cgr_expected_strata()`, `cgr_guess_rates()`, `cgrc_reliability()`,
+`cgrc_analysis_summary()`, `cgrc_build_html_report()`.
+
 ## Preserved unchanged
 
 - The estimand: strata, r, s, weights, Delta(c).
