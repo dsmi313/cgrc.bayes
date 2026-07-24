@@ -559,7 +559,7 @@ cgrc_verdict <- function(lut, n, p_cg, true_effect, mu_aeb = 7.7) {
       "the standard threshold posterior P(favourable)>0.95 throughout: when the ",
       "apparent signal is pure expectancy, an unadjusted analysis flags a false ",
       "effect in %.0f%% of simulated trials, while the CGR-adjusted analysis flags ",
-      "it in only %.0f%% — the false treatment attribution the adjustment removes.%s"),
+      "it in only %.0f%% - the false treatment attribution the adjustment removes.%s"),
       n, 100 * p_cg, 100 * ub(fp), 100 * fp$p_fav_gt_95, feas)
   } else {
     pw <- cgrc_op_at(lut, n, p_cg, true_effect, 1, 0, mu_aeb)  # clean power
