@@ -245,6 +245,7 @@ with a full input audit and downloadable cleaned data, exclusion log, and report
 | `tests/testthat/` | estimand + reproduction + rope + app test suites |
 | `data-raw/download_data.R` | fetch + checksum-verify the public data |
 | `data/pacutes.csv` | pinned public dataset (SHA-256 in `PROVENANCE.txt`) |
+| `inst/extdata/external_studies/` | three audited external-trial datasets (Cavanna, Santana, Lii) for the vignette's external-validation section (`PROVENANCE.txt`) |
 | `00_BRIEF.md` | the design brief, corrections list, and empirical findings |
 | `reports/` | changelog, unresolved items, test status, audit, plain-language, sources |
 
