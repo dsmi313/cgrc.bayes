@@ -16,7 +16,7 @@ cgrc_lookup <- function() {
   readRDS(f)
 }
 
-# Launch the Shiny design app ("Is CGR adjustment safe for my trial?").
+# Launch the Shiny design app ("How reliable is CGR adjustment for my trial design?").
 cgrc_app <- function(...) {
   if (!requireNamespace("shiny", quietly = TRUE)) {
     stop("the app needs the 'shiny' package: install.packages('shiny')",
@@ -370,6 +370,157 @@ cgrc_build_report <- function(f) {
   add("")
   add("_Report text: %s_", h$text)
   L
+}
+
+# Expected size of each of the four treatment x guess strata for a PLANNED design
+# of size n at correct-guess rate p_cg, under balanced (0.5) random assignment and
+# a guess rate that applies symmetrically to both arms. The two correct-guess
+# strata (ACAC, PLPL) expect 0.5*n*p_cg each; the two wrong-guess strata (ACPL,
+# PLAC) expect 0.5*n*(1-p_cg) each. Sums to n; min() is cgr_min_stratum(). Shown
+# in full so the design panel never hides an arm imbalance behind a single number.
+cgr_expected_strata <- function(n, p_cg) {
+  c(ACAC = 0.5 * n * p_cg,       ACPL = 0.5 * n * (1 - p_cg),
+    PLAC = 0.5 * n * (1 - p_cg), PLPL = 0.5 * n * p_cg)
+}
+
+# Correct-guess rates broken out BY ARM, plus allocation and guess-response
+# counts, computed directly (not via cgr_strata, which errors on an empty
+# stratum) so it can expose the arm asymmetry a single overall rate hides - e.g.
+# active-arm unblinding with a benign-looking overall rate. `trial` has columns
+# condition (AC/PL) and guess (AC/PL, optionally UNKNOWN). The active-arm rate is
+# P(guess active | received active); the placebo-arm rate is P(guess placebo |
+# received placebo). Correct counts only a matching directional guess, so an
+# UNKNOWN response is never scored as correct.
+cgr_guess_rates <- function(trial) {
+  cond <- as.character(trial$condition); guess <- as.character(trial$guess)
+  n_ac <- sum(cond == "AC"); n_pl <- sum(cond == "PL")
+  correct <- cond == guess & guess %in% c("AC", "PL")
+  list(
+    overall  = if (length(cond)) mean(correct) else NA_real_,
+    active   = if (n_ac) sum(cond == "AC" & guess == "AC") / n_ac else NA_real_,
+    placebo  = if (n_pl) sum(cond == "PL" & guess == "PL") / n_pl else NA_real_,
+    n_active = n_ac, n_placebo = n_pl,
+    guess_active  = sum(guess == "AC"),
+    guess_placebo = sum(guess == "PL"),
+    guess_unknown = sum(guess == "UNKNOWN"))
+}
+
+# A four-level reliability category for a design, from feasibility alone (the
+# smallest expected stratum and the simulated empty-stratum rate). Deliberately
+# NOT a binary safe/unsafe verdict: CGR adjustment can be reliable under the
+# simulated conditions, usable with caution, fragile, or effectively undefined
+# when strata come up empty too often. Thresholds are arguments so the app and
+# the tests share one definition. Returns the category and a CSS class the app
+# uses to colour the badge.
+cgrc_reliability <- function(min_stratum, empty_stratum_rate = NA_real_,
+                             thin = 15, degen_warn = 0.02, degen_bad = 0.10) {
+  degen <- if (is.na(empty_stratum_rate)) 0 else empty_stratum_rate
+  if (degen > degen_bad) {
+    list(category = "Adjustment undefined in many simulated trials", class = "warn")
+  } else if (min_stratum < thin || degen > degen_warn) {
+    list(category = "Fragile design", class = "warn")
+  } else if (min_stratum < 2 * thin) {
+    list(category = "Use with caution", class = "caution")
+  } else {
+    list(category = "Reliable under simulated conditions", class = "ok")
+  }
+}
+
+# Tidy one-row-per-quantity summary of an uploaded-trial analysis, feeding BOTH
+# the compact on-screen headline and the downloadable summary CSV so the two can
+# never disagree. `f` is the app's assembled analysis object (see inst/app/app.R).
+# The adjusted effect is explicitly labelled a counterfactual under the CGRC
+# assumptions, not automatically the true pharmacological effect. Works for the
+# binary and the UNKNOWN-preserving modes.
+cgrc_analysis_summary <- function(f) {
+  if (f$mode == "unknown") {
+    sm <- f$ufit$summary; h <- f$uhead
+    obs_cgr <- f$ufit$observed_directional_cgr
+    st <- cgr_unknown_strata(f$trial); nn <- lengths(st); smallest <- min(nn[nn > 0])
+  } else {
+    sm <- f$fit$summary; h <- f$head
+    obs_cgr <- f$fit$observed_cgr
+    st <- cgr_strata(f$trial); smallest <- min(lengths(st)[STRATA])
+  }
+  data.frame(
+    quantity = c(
+      "Raw treatment effect (at observed CGR)",
+      "Adjusted effect (CGR 0.50; counterfactual under CGRC assumptions)",
+      "Adjusted 95% CrI lower", "Adjusted 95% CrI upper",
+      "P(favourable) raw", "P(favourable) adjusted",
+      sprintf("P(exceeds %.3g-unit threshold) raw", f$delta),
+      sprintf("P(exceeds %.3g-unit threshold) adjusted", f$delta),
+      "Observed correct-guess rate", "Smallest stratum size",
+      "Meaningful-difference threshold (outcome units)", "Random seed"),
+    value = c(
+      round(sm$post_mean[1], 3), round(sm$post_mean[2], 3),
+      round(sm$cri_lo[2], 3), round(sm$cri_hi[2], 3),
+      round(sm$p_favourable[1], 3), round(sm$p_favourable[2], 3),
+      round(h$p_meaningful_obs, 3), round(h$p_meaningful_blind, 3),
+      round(obs_cgr, 4), smallest, round(f$delta, 3),
+      if (is.null(f$seed)) NA_real_ else f$seed),
+    stringsAsFactors = FALSE)
+}
+
+# Compact self-contained HTML analysis report (settings, results, warnings, seed,
+# package version). Kept in the package (not app.R) so it is testable and the app
+# carries no statistics of its own. Returns a single HTML string.
+cgrc_build_html_report <- function(f) {
+  ver <- tryCatch(as.character(utils::packageVersion("cgrc.bayes")),
+                  error = function(e) "NA")
+  esc <- function(x) {
+    x <- gsub("&", "&amp;", x, fixed = TRUE); x <- gsub("<", "&lt;", x, fixed = TRUE)
+    gsub(">", "&gt;", x, fixed = TRUE)
+  }
+  summ <- cgrc_analysis_summary(f)
+  gr <- tryCatch(cgr_guess_rates(f$trial), error = function(e) NULL)
+  method <- if (f$mode == "unknown")
+    "UNKNOWN-preserving CGRC extension (six strata; observed UNKNOWN rate held fixed)."
+    else "Binary four-stratum CGRC (Normal-Inverse-Gamma conjugate posterior)."
+  s <- f$audit$summary
+  warns <- character(0)
+  smallest <- summ$value[summ$quantity == "Smallest stratum size"]
+  if (length(smallest) && is.finite(smallest) && smallest < 15)
+    warns <- c(warns, sprintf("Smallest stratum has %d participants (&lt; 15): the reweighted estimate is fragile.", as.integer(smallest)))
+  if (!is.null(gr) && is.finite(gr$active) && is.finite(gr$placebo) &&
+      abs(gr$active - gr$placebo) > 0.2)
+    warns <- c(warns, sprintf("Arm asymmetry: active-arm correct-guess rate %.0f%% vs placebo-arm %.0f%%.",
+                              100 * gr$active, 100 * gr$placebo))
+  rows <- paste(sprintf("<tr><td>%s</td><td style='text-align:right'>%s</td></tr>",
+                        esc(summ$quantity), ifelse(is.na(summ$value), "NA",
+                          formatC(summ$value, format = "g", digits = 6))),
+                collapse = "\n")
+  warn_html <- if (length(warns))
+    paste0("<div class='warn'><b>Warnings</b><ul>",
+           paste(sprintf("<li>%s</li>", warns), collapse = ""), "</ul></div>")
+    else "<p class='muted'>No feasibility warnings.</p>"
+  paste0(
+    "<!doctype html><html><head><meta charset='utf-8'>",
+    "<title>CGRC analysis report</title><style>",
+    "body{font-family:system-ui,Arial,sans-serif;font-size:16px;max-width:820px;",
+    "margin:24px auto;padding:0 16px;color:#222;line-height:1.5;}",
+    "h1{font-size:24px;} h2{font-size:20px;margin-top:1.4em;}",
+    "table{border-collapse:collapse;width:100%;} td,th{border:1px solid #ccc;padding:6px 8px;}",
+    ".muted{color:#555;} .warn{background:#FDEDEC;border-left:5px solid #C0392B;",
+    "padding:8px 12px;border-radius:4px;}</style></head><body>",
+    "<h1>CGRC analysis report</h1>",
+    "<p class='muted'>Generated ", esc(format(Sys.time(), "%Y-%m-%d %H:%M:%S")),
+    " &middot; cgrc.bayes ", esc(ver),
+    " &middot; seed ", if (is.null(f$seed)) "not set" else esc(as.character(f$seed)),
+    "</p>",
+    "<h2>Settings</h2><ul>",
+    "<li>Method: ", esc(method), "</li>",
+    "<li>Favourable direction: ", if (isTRUE(f$dir < 0)) "lower is better" else "higher is better", "</li>",
+    "<li>Meaningful-difference threshold: ", formatC(f$delta, format = "g", digits = 4), " outcome units</li>",
+    "<li>Rows uploaded: ", s[["n_input"]], "; analysed: ", nrow(f$trial), "</li>",
+    "</ul>",
+    "<h2>Results</h2><table>", rows, "</table>",
+    "<p class='muted'>The adjusted effect is a counterfactual under the CGRC ",
+    "assumptions (what the effect would have been at a 50% correct-guess rate), ",
+    "not automatically the true pharmacological effect. Probabilities are ",
+    "continuous &mdash; no significant/not-significant cut-off is imposed.</p>",
+    "<h2>Warnings</h2>", warn_html,
+    "</body></html>")
 }
 
 # Should pct_attenuation be shown? No when the unadjusted estimate is not

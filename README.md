@@ -51,21 +51,34 @@ sample size, guess rate and effect size:
 cgr_operating(n = 120, p_cg = 0.85, n_trials = 500)   # bias, RMSE, 95% coverage, error rates
 ```
 
-**Or use the interactive app** — "Is CGR adjustment safe for my trial?":
+**Or use the interactive app** — "How reliable is CGR adjustment for my trial
+design?":
 
 ```r
 install.packages("shiny")
 cgrc_app()
 ```
 
-Panel A (Design) reads a precomputed simulation grid instantly: a plain-language
-verdict, a power-vs-n curve, the false-positive/power trade-off with and without
-adjustment, a feasibility readout (smallest expected stratum, % of simulated
-trials with an empty stratum), and a button to run the exact simulation at your
-settings. Panel B (Analyse) takes a CSV of your own trial, adjusts it with
-`cgrc()`, and shows the CGR curve, the ROPE decomposition, and the observed-CGR
-identity check — then offers to run the design check at your trial's own n and
-observed guess rate.
+Panel A (Design) reads a precomputed simulation grid instantly and answers with a
+reliability category rather than a binary safe/unsafe verdict — *reliable under
+simulated conditions*, *use with caution*, *fragile design*, or *adjustment
+undefined in many simulated trials*. It shows a power-vs-n curve, the
+false-treatment-attribution/power trade-off with and without adjustment (a real
+observed arm difference driven by expectancy when the direct effect is zero), an
+operating-characteristics table reporting **both** the standard one-sided Bayesian
+flag `P(favourable) > 0.95` and the approximately direction-matched comparator
+`P > 0.975` (compared with a *favourable-tail* `p < 0.05`, not a two-sided one),
+a feasibility readout listing **all four** expected stratum sizes and the stated
+design assumptions, and a button to run the exact simulation at your settings —
+whose results are shown side by side with the interpolated lookup and overlaid on
+the plots. Panel B (Analyse) takes a CSV of your own trial, audits and previews
+the mapped data (missing/removed rows, arm-specific correct-guess rates, all four
+stratum counts, thin-stratum warnings), adjusts it with `cgrc()` under a
+user-visible seed, and shows a compact plain-language summary (the adjusted effect
+is flagged as a counterfactual, not automatically the true pharmacological
+effect), the CGR curve, the ROPE decomposition, and the observed-CGR identity
+check. Results download as a summary CSV, the CGR curve CSV, a plot PNG, and a
+self-contained HTML report (settings, results, warnings, seed, package version).
 
 `cgrc()` returns the CGR-adjusted estimate (at a target correct-guess rate of
 0.50 — guessing at chance, not a claim of proven perfect blinding), a
@@ -168,8 +181,8 @@ the six strata are also thinner than four, so degenerate designs appear sooner.
 In the app, Panel B runs this on demand at your trial's n, directional CGR and
 observed UNKNOWN rate, and **Panel A** has an *Expected UNKNOWN-response rate*
 slider: set it above 0 and the whole design tool (verdict, power curve,
-false-positive/power trade-off, operating-characteristics table, feasibility)
-switches to the six-stratum estimator, read from a precomputed UNKNOWN lookup
+false-treatment-attribution/power trade-off, operating-characteristics table,
+feasibility) switches to the six-stratum estimator, read from a precomputed UNKNOWN lookup
 (`data-raw/build_unknown_lookup.R`). At `u = 0` Panel A is exactly the original
 binary design tool.
 
