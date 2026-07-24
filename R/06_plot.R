@@ -46,12 +46,12 @@ cgr_plot <- function(cur, obs_cgr, title = NULL,
     ggplot2::scale_x_continuous(breaks = c(0, 0.25, 0.5, 0.75, 1)) +
     ggplot2::labs(x = "Correct guess rate (CGR)", y = NULL,
                   colour = NULL, fill = NULL, title = title,
-                  subtitle = sprintf(paste("black dashed = target CGR 0.50",
-                                           "(guessing at chance); green dashed =",
-                                           "observed CGR (%.3f)"), obs_cgr)) +
-    ggplot2::theme_minimal(base_size = 15) +
+                  subtitle = sprintf("dashed: black = chance (0.50), green = observed (%.3f)",
+                                     obs_cgr)) +
+    ggplot2::theme_minimal(base_size = 14) +
     ggplot2::theme(strip.placement = "outside",
                    panel.grid.minor = ggplot2::element_blank(),
+                   plot.subtitle = ggplot2::element_text(size = ggplot2::rel(0.85)),
                    legend.position = "top")
 }
 
@@ -88,13 +88,14 @@ cgr_unknown_plot <- function(cur, obs_cgr, u, title = NULL,
                         strip.position = "left") +
     ggplot2::scale_x_continuous(breaks = c(0, 0.25, 0.5, 0.75, 1)) +
     ggplot2::labs(
-      x = "Directional correct-guess rate among AC/PL responses", y = NULL,
+      x = "Directional CGR (among AC/PL responses)", y = NULL,
       title = title,
-      subtitle = "black dashed = directional guessing at chance (0.50); green dashed = observed directional CGR",
+      subtitle = sprintf("dashed: black = chance (0.50), green = observed (%.3f)", obs_cgr),
       caption = sprintf("UNKNOWN-response rate held at %.1f%%.", 100 * u)) +
-    ggplot2::theme_minimal(base_size = 15) +
+    ggplot2::theme_minimal(base_size = 14) +
     ggplot2::theme(strip.placement = "outside",
-                   panel.grid.minor = ggplot2::element_blank())
+                   panel.grid.minor = ggplot2::element_blank(),
+                   plot.subtitle = ggplot2::element_text(size = ggplot2::rel(0.85)))
 }
 
 # Reproduce Szigeti's published twin-axis figure in its OWN visual grammar so a

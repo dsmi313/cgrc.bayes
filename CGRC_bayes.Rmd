@@ -209,24 +209,13 @@ how a misplaced reference line gets caught.
 Every number below is reproducible with a calculator.
 
 ```{r load-data}
-# Resolve pacutes.csv without assuming a data/ folder: the working directory
-# first (drop the file into your session), then the repo layout, then the
-# installed package copy.
-pacutes_path <- function() {
-  cand <- c("pacutes.csv", "data/pacutes.csv", "../../data/pacutes.csv",
-            system.file("data", "pacutes.csv", package = "cgrc.bayes"))
-  for (p in cand) if (nzchar(p) && file.exists(p)) return(p)
-  stop("pacutes.csv not found; put it in the working directory, or run ",
-       "`Rscript data-raw/download_data.R` from the repo root.", call. = FALSE)
-}
-PACUTES <- pacutes_path()
-raw <- read.csv(PACUTES, stringsAsFactors = FALSE)
+stopifnot(file.exists("pacutes.csv"))
+raw <- read.csv("pacutes.csv", stringsAsFactors = FALSE)
 
 if (requireNamespace("digest", quietly = TRUE)) {
-  sha <- digest::digest(PACUTES, algo = "sha256", file = TRUE)
-  if (!identical(sha, "86aa784528ee045c61fadf3eacfd3e1897d16aae9839cee7cb4bfe839a7cc4e3"))
-    warning("pacutes.csv SHA-256 does not match the pinned copy; ",
-            "reproduced numbers may differ from those in the text.", call. = FALSE)
+  sha <- digest::digest("pacutes.csv", algo = "sha256", file = TRUE)
+  stopifnot(identical(
+    sha, "86aa784528ee045c61fadf3eacfd3e1897d16aae9839cee7cb4bfe839a7cc4e3"))
 }
 
 load_scale <- function(code, tp = "w1s1") {
@@ -630,6 +619,115 @@ Three conclusions:
 
 So the difference between the original and this document is **computational
 stability plus a change of inferential summary** — not a change of estimand.
+
+## KDE averaged p-value vs the Bayesian posterior — head-to-head
+
+The comparison above matched the KDE *point estimate* to the analytic value, and
+the two implementations agree there because both target $\Delta(c)$ and averaging
+mean-preserving resamples does not move a mean. What differs is the *inferential
+summary*: the original averages a two-sided $t$-test p-value across resamples,
+this one summarises a posterior. Those are not the same statement. This
+subsection puts them head to head — first on the real PANAS data, then as an
+operating-characteristic comparison over repeated simulated trials (the check
+noted as an open item in earlier drafts).
+
+```{r val-kde-vs-post-data, cache=TRUE}
+set.seed(7)
+kc <- cgr_kde_curve(panas, grid = seq(0, 1, length.out = 13), n_rep = 400)
+cc <- cgr_conjugate(panas, grid = seq(0, 1, length.out = 13),
+                    n_draws = 40000, direction = 1)
+o  <- cgr_observed(cgr_strata(panas))
+at <- function(g, cgr) g[which.min(abs(g$cgr - cgr)), ]
+do.call(rbind, lapply(c(`observed CGR` = o, `perfect blinding` = 0.5), function(cg) {
+  k <- at(kc, cg); b <- at(cc, cg)
+  data.frame(
+    `Delta(c): KDE / posterior` = sprintf("%.2f / %.2f", k$est, b$est),
+    `KDE averaged p` = sprintf("%.3f", k$p),
+    `posterior P(favourable)` = sprintf("%.3f", b$p_fav),
+    `posterior 2-sided tail 2(1-P)` = sprintf("%.3f", 2 * (1 - b$p_fav)),
+    check.names = FALSE)
+}))
+```
+
+The two point estimates coincide at every CGR. The two evidence summaries need
+not: at the observed CGR the KDE averaged p-value is
+`r sprintf("%.3f", at(kc, o)$p)`, while the posterior puts P(favourable) at
+`r sprintf("%.3f", at(cc, o)$p_fav)` — a two-sided tail of about
+`r sprintf("%.3f", 2 * (1 - at(cc, o)$p_fav))`. Same estimand, same direction, but
+the averaged p-value is the more conservative summary.
+
+To see whether that is systematic, the next chunk runs both procedures over the
+*same* simulated trials — 300 trials at $n = 200$, correct-guess rate 0.7 and a
+true 3-point effect — and compares their point estimates and their decisions at
+matched thresholds (two-sided $p < 0.05$ against posterior $P > 0.975$). It also
+re-runs the KDE step with the bandwidth set to zero, to test whether the kernel is
+responsible for any gap.
+
+```{r val-kde-vs-post-oc, cache=TRUE, fig.height=5.5}
+set.seed(101)
+N <- 300; n <- 200; p_cg <- 0.7; mu_dte <- 3
+ke <- kp <- kp0 <- be <- bp <- rep(NA_real_, N)
+for (i in seq_len(N)) {
+  d <- sim_aeb(n, p_cg, dte_on = TRUE, aeb_on = FALSE, mu_dte = mu_dte)
+  if (!all(STRATA %in% paste0(d$condition, d$guess))) next
+  ke[i]  <- (k <- cgr_kde(d, 0.5, n_rep = 100))$est; kp[i] <- k$p
+  kp0[i] <- cgr_kde(d, 0.5, n_rep = 100, bw = 0)$p          # bandwidth 0 control
+  st <- cgr_strata(d); rat <- cgr_ratios(st)
+  dd <- cgr_delta(0.5, lapply(st, nig_draws, n_draws = 4000), rat$r, rat$s)
+  be[i] <- mean(dd); bp[i] <- mean(dd > 0)
+}
+ok <- !is.na(kp)
+
+knitr::kable(data.frame(
+  Quantity = c("Valid trials",
+               "Point estimate — KDE mean (bias)",
+               "Point estimate — posterior mean (bias)",
+               "Point-estimate correlation (KDE vs posterior)",
+               "Flag rate — KDE averaged p < 0.05",
+               "Flag rate — KDE averaged p < 0.05, bandwidth 0",
+               "Flag rate — posterior P(favourable) > 0.975",
+               "Trials where the two decisions agree"),
+  Value = c(sum(ok),
+            sprintf("%.2f (%+.3f)", mean(ke[ok]), mean(ke[ok]) - mu_dte),
+            sprintf("%.2f (%+.3f)", mean(be[ok]), mean(be[ok]) - mu_dte),
+            sprintf("%.3f", cor(ke[ok], be[ok])),
+            sprintf("%.3f", mean(kp[ok]  < 0.05)),
+            sprintf("%.3f", mean(kp0[ok] < 0.05)),
+            sprintf("%.3f", mean(bp[ok]  > 0.975)),
+            sprintf("%.0f%%", 100 * mean((kp[ok] < 0.05) == (bp[ok] > 0.975)))),
+  check.names = FALSE),
+  caption = "KDE procedure vs Bayesian posterior over 300 simulated trials (true Delta = 3)")
+
+ggplot(data.frame(kde = kp[ok], post2 = 2 * pmin(bp[ok], 1 - bp[ok])),
+       aes(kde, post2)) +
+  geom_abline(slope = 1, intercept = 0, colour = "grey60", linetype = "dashed") +
+  geom_vline(xintercept = 0.05, colour = "#C0392B", linetype = "dotted") +
+  geom_hline(yintercept = 0.05, colour = "#C0392B", linetype = "dotted") +
+  geom_point(alpha = 0.5, colour = "#2471A3") +
+  labs(x = "KDE averaged p-value (original procedure)",
+       y = "posterior two-sided tail, 2 * min(P, 1 - P)",
+       title = "Per-trial evidence: averaged p-value vs posterior") +
+  theme_minimal(base_size = 13)
+```
+
+The two procedures **agree on the estimand** — the per-trial point estimates are
+almost perfectly correlated ($r \approx$ `r sprintf("%.3f", cor(ke[ok], be[ok]))`)
+and share the same small bias — but they **do not agree on the evidence**. At
+matched thresholds the posterior flags the effect in about
+`r round(100 * mean(bp[ok] > 0.975))`% of trials against roughly
+`r round(100 * mean(kp[ok] < 0.05))`% for the averaged p-value, and the two rules
+reach different conclusions on about
+`r round(100 * mean((kp[ok] < 0.05) != (bp[ok] > 0.975)))`% of trials; in the
+scatter the averaged p-value sits systematically above the identity line — a
+weaker evidence signal for the same trials. This is **not** a kernel artefact:
+setting the KDE bandwidth to zero leaves the flag rate essentially unchanged
+(`r sprintf("%.3f", mean(kp0[ok] < 0.05))` vs
+`r sprintf("%.3f", mean(kp[ok] < 0.05))`). It is the *resample-and-average-a-p-value*
+step itself — which has no coherent inferential interpretation — that costs the
+original procedure detection power. Replacing it with a posterior probability is
+therefore not merely a change of vocabulary: it recovers evidence the averaging
+discards, while leaving the estimand untouched. That is the single clearest
+statement of what the Bayesian version adds.
 
 ## Conjugate versus matched JAGS
 
@@ -1523,12 +1621,12 @@ knitr::kable(data.frame(stratum = STRATA, n = lengths(st)[STRATA]),
 
 ```{r ext-cavanna-wellbeing, fig.height=6.5}
 knitr::kable(app_summary(cav_wb), caption = "Cavanna — psychological well-being (higher is better)")
-app_curve(cav_wb, "positive (higher well-being)")
+app_curve(cav_wb, "positive")
 ```
 
 ```{r ext-cavanna-vas, fig.height=6.5}
 knitr::kable(app_summary(cav_vas), caption = "Cavanna — dosing-day acute-effect VAS (positive control)")
-app_curve(cav_vas, "positive (stronger acute effect)")
+app_curve(cav_vas, "positive")
 ```
 
 Well-being shows nothing to adjust: a raw active-minus-placebo difference near
@@ -1566,7 +1664,7 @@ knitr::kable(data.frame(stratum = UNKNOWN_STRATA, n = lengths(us)[UNKNOWN_STRATA
 
 ```{r ext-santana-result, fig.height=6.5}
 knitr::kable(app_summary(san), caption = "Santana — 6-month ITT pain improvement, UNKNOWN preserved (MID 1.5)")
-app_curve(san, "favourable (pain improvement)")
+app_curve(san, "favourable")
 ```
 
 This is the clearest case for the UNKNOWN extension. `r san$fit$n_unknown` of
@@ -1605,7 +1703,7 @@ knitr::kable(data.frame(stratum = UNKNOWN_STRATA, n = lengths(uk)[UNKNOWN_STRATA
 
 ```{r ext-ketamine-result, fig.height=6.5}
 knitr::kable(app_summary(ket), caption = "Lii / ketamine — mean MADRS Days 1-3 (lower is better; direction = -1)")
-app_curve(ket, "favourable (lower MADRS)")
+app_curve(ket, "favourable")
 ```
 
 Guessing here is near chance (directional CGR
