@@ -1429,10 +1429,13 @@ shipped audit summary.
 | Lii et al. (2023) | ketamine masked by anaesthesia | AC / PL / UNKNOWN | mean MADRS Days 1–3 (lower = better) |
 
 ```{r ext-setup}
-# Resolve a shipped dataset whether the vignette renders from the repo root or
-# from an installed package.
+# Resolve a dataset by name. The working directory is tried FIRST (drop the CSVs
+# next to this file / into your session's wd), then the repo layout, then an
+# installed package copy. Expected names: cavanna_cgrc.csv, santana_cgrc_unk.csv,
+# ketamine_cgrc_unk.csv.
 read_ext <- function(f) {
-  cand <- c(file.path("inst/extdata/external_studies", f),
+  cand <- c(f,                                               # working directory
+            file.path("inst/extdata/external_studies", f),   # repo layout
             system.file("extdata", "external_studies", f, package = "cgrc.bayes"))
   for (p in cand) if (nzchar(p) && file.exists(p))
     return(utils::read.csv(p, stringsAsFactors = FALSE))
