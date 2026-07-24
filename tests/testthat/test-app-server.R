@@ -173,6 +173,25 @@ test_that("Panel B does not offer the binary design bridge for an UNKNOWN analys
   })
 })
 
+test_that("Panel B runs an on-demand UNKNOWN design check (not the binary lookup)", {
+  skip_if_not(requireNamespace("shiny", quietly = TRUE), "shiny not installed")
+  app_dir <- system.file("app", package = "cgrc.bayes"); skip_if(app_dir == "", "app not installed")
+  f <- unknown_csv()
+  shiny::testServer(app_dir, {
+    session$setInputs(csv = list(datapath = f, name = "u.csv"),
+                      col_cond = "condition", col_guess = "guess", col_value = "value",
+                      direction = "1", rope = 0.1, seed_b = 1, unknown_level = "UNKNOWN",
+                      eff = 3, mu_aeb = 7.7, n_trials = 40, analyse = 1)
+    expect_identical(safe_fit()$mode, "unknown")
+    session$setInputs(run_unknown_design = 1)
+    op <- udesign_rv()
+    expect_equal(nrow(op), 4L)                          # 4 DTE x AEB scenarios
+    expect_equal(attr(op, "n_trials"), 40)              # uses the trial slider
+    expect_true(all(op$coverage95 > 0.8 & op$coverage95 <= 1))
+    expect_true("empty_stratum_rate" %in% names(op))
+  })
+})
+
 test_that("Panel B errors clearly on an unmappable coding", {
   skip_if_not(requireNamespace("shiny", quietly = TRUE), "shiny not installed")
   app_dir <- system.file("app", package = "cgrc.bayes")

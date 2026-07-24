@@ -104,10 +104,10 @@ minimally-important difference - "too small to be noticeable".
 No analysis of these data can settle whether unblinding is benign or malicious;
 this item stays open on principle, not for lack of a number.
 
-## U10  UNKNOWN-preserving extension: assumptions and unsimulated behaviour   [for the extension]
+## U10  UNKNOWN-preserving extension: assumptions   [operating characteristics now simulated; assumptions remain]
 The six-stratum UNKNOWN extension (CH-17) is an addition by this package, not the
-Szigeti estimand, and three things about it are deliberately left open rather
-than asserted:
+Szigeti estimand. Two interpretive assumptions remain open by nature, and the
+one empirical gap that was open has now been addressed (CH-23):
 - **The preserved UNKNOWN arm share `t` is an assumption.** Reweighting holds
   `t = ACU/(ACU+PLU)` fixed as it scales the UNKNOWN mass, exactly as the CGRC
   holds r and s fixed. This preserves the observed within-UNKNOWN arm ratio; it
@@ -118,15 +118,25 @@ than asserted:
 - **`c = 0.50` is not "perfect blinding".** It is directional guessing at chance
   while the UNKNOWN rate is held fixed. Whether an UNKNOWN response is itself a
   sign of good blinding, or of disengagement, is not decidable from the counts.
-- **No operating-characteristic simulation with UNKNOWN exists.** The Section 9
-  AEB generative model produces only AC/PL guesses; the design-lookup (Panel A)
-  therefore does not model UNKNOWN, and the app disables the design bridge for an
-  UNKNOWN-preserving analysis. Bias/RMSE/coverage/power for the UNKNOWN extension
-  are consequently uncharacterised. **Do not claim the extension is validated,
-  or that it outperforms the binary method, until a generative model with an
-  UNKNOWN response is built and validated.** Running it on the Santana and
-  ketamine count structures shows it computes correctly; it does not show it is
-  well-calibrated.
+
+**Operating characteristics — now simulated [ADDRESSED 2026-07-24, CH-23].** A
+purpose-built UNKNOWN-aware generative model (`sim_aeb_unknown`) and an operating-
+characteristics study (`cgr_unknown_operating`) now exist. Under the model's two
+explicit assumptions — (A1) the UNKNOWN-response rate is equal in both arms, and
+(A2) an UNKNOWN responder carries no expectancy (no directional belief -> no
+PT->TE path) — the six-stratum estimator of `Delta(0.50, u_obs)` is essentially
+unbiased for the direct effect (|bias| < 0.06 at n=300) with 95% coverage
+(~0.95-0.96 across all four DTE x AEB scenarios), and under pure expectancy the
+adjusted false-favourable rate stays ~0.05 while the naive t-test flags ~0.73.
+The app's Panel B runs this on demand at the uploaded trial's n, directional CGR
+and observed UNKNOWN rate.
+**Still conditional:** this is validation *under A1 and A2*. It is not a claim
+that the extension outperforms the binary method in general, nor that A1/A2 hold
+in any real trial. Differential UNKNOWN rates (A1 relaxed) and UNKNOWN responders
+who do carry expectancy (A2 relaxed) are not yet characterised; the six strata
+are also thinner than four, so `empty_stratum_rate` climbs faster at small n /
+high guess or UNKNOWN rates. The precomputed Panel A lookup still models binary
+guessing only, so it is not reused for UNKNOWN designs.
 
 ## U7  KDE bandwidth was never a deliberate choice
 The original uses sklearn's default fixed bandwidth of 1.0, not a data-adaptive

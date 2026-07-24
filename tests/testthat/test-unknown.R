@@ -277,6 +277,52 @@ test_that("independent estimand errors when a weighted class has an empty arm ce
   expect_error(cgr_unknown_independent(d, n_draws = 2000), "empty arm cell")
 })
 
+## ============ Generative model + operating characteristics (U10) ============
+test_that("sim_aeb_unknown produces the requested UNKNOWN and directional rates", {
+  set.seed(1)
+  d <- sim_aeb_unknown(60000, p_cg = 0.72, u = 0.3, dte_on = TRUE, aeb_on = TRUE)
+  expect_true(all(d$guess %in% c("AC", "PL", "UNKNOWN")))
+  o <- cgr_unknown_observed(cgr_unknown_strata(d))
+  expect_equal(o$u_obs, 0.30, tolerance = 0.01)          # arm-independent UNKNOWN rate
+  expect_equal(o$c_obs, 0.72, tolerance = 0.01)          # directional CGR
+  expect_true(all(o$counts > 0))
+})
+
+test_that("UNKNOWN responders carry no expectancy (assumption A2)", {
+  # with a real effect OFF but expectancy ON, the UNKNOWN strata should show no
+  # arm mean-shift from expectancy: their means come only from the base + noise.
+  set.seed(2)
+  d <- sim_aeb_unknown(80000, p_cg = 0.7, u = 0.4, dte_on = FALSE, aeb_on = TRUE,
+                       mu_nh = 10, mu_aeb = 8)
+  st <- cgr_unknown_strata(d)
+  # ACU and PLU means both ~ mu_nh (no expectancy term); directional-active cells lift
+  expect_equal(mean(st$ACU), 10, tolerance = 0.2)
+  expect_equal(mean(st$PLU), 10, tolerance = 0.2)
+  expect_gt(mean(st$ACAC), mean(st$ACU))                 # correctly-guessed-active is inflated
+})
+
+test_that("cgr_unknown_operating: the estimator is ~unbiased with ~0.95 coverage", {
+  op <- cgr_unknown_operating(n_trials = 200, n = 320, p_cg = 0.7, u = 0.25, seed = 3)
+  expect_equal(nrow(op), 4L)
+  expect_true(all(c("adj_bias","coverage95","p_fav_gt_95","freq_sig","empty_stratum_rate")
+                  %in% names(op)))
+  expect_true(all(abs(op$adj_bias) < 0.4))               # unbiased for the direct effect
+  expect_true(all(op$coverage95 > 0.90 & op$coverage95 <= 1))
+  # the key property: under pure expectancy the ADJUSTED false-positive is far
+  # below the naive t-test's expectancy-driven significance
+  pe <- op[op$DTE == 0 & op$AEB == 1, ]
+  expect_lt(pe$p_fav_gt_95, 0.15)
+  expect_gt(pe$freq_sig, pe$p_fav_gt_95 + 0.2)
+})
+
+test_that("cgr_unknown_min_stratum is the thinnest of the six expected cells", {
+  # at u = 0 it matches the binary smallest stratum; a large u thins the design
+  expect_equal(cgr_unknown_min_stratum(200, 0.7, 0), cgr_min_stratum(200, 0.7),
+               tolerance = 1e-9)
+  expect_lt(cgr_unknown_min_stratum(200, 0.7, 0.5), cgr_min_stratum(200, 0.7))
+  expect_gt(cgr_unknown_min_stratum(200, 0.7, 0.2), 0)
+})
+
 ## ============================ H. Backend agreement ==========================
 test_that("conjugate and normal-JAGS UNKNOWN backends agree within MC error", {
   skip_if_not(requireNamespace("rjags", quietly = TRUE), "rjags/JAGS not installed")

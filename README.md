@@ -98,6 +98,7 @@ a warning that CGR adjustment is fragile for your design.
 | `cgr_unknown_jags(df, pooling)` | six-stratum JAGS backend (`"normal"`/`"t"`; `"none"`/`"partial"` pooling) |
 | `cgr_unknown_check_backends(df)` | verify the UNKNOWN conjugate and JAGS posteriors agree |
 | `cgr_unknown_independent(df)` | experimental shared-guess-distribution estimand (distinct from CGRC) |
+| `sim_aeb_unknown(...)`, `cgr_unknown_operating(...)` | UNKNOWN-aware generative model + operating-characteristics study |
 | `cgrc_normalise_guess(x)` | map a guess column to AC/PL/UNKNOWN; blank/NA stay missing |
 | `cgrc_input_audit(...)`, `cgrc_build_report(f)` | per-row input audit and a Markdown analysis report |
 
@@ -153,9 +154,19 @@ directional guesses keeps the UNKNOWN mass where it was observed.
 with the UNKNOWN rate held fixed* — **not** "perfect blinding", and not proof
 that assignment and all three guess categories are independent. The preserved
 share `t` is an assumption (the observed within-UNKNOWN arm ratio), exactly as
-`r, s` are. There is **no** operating-characteristic simulation with UNKNOWN yet,
-so the extension is not calibration-validated and must not be claimed to
-outperform the binary method (see `reports/UNRESOLVED.md` U10).
+`r, s` are.
+
+**Operating characteristics.** `sim_aeb_unknown()` and `cgr_unknown_operating()`
+characterise the estimator under an explicit generative model — UNKNOWN rate
+equal across arms, UNKNOWN responders carrying no expectancy. Under those
+assumptions `Δ(0.50, u_obs)` is essentially unbiased for the direct effect with
+~0.95 coverage, and controls the pure-expectancy false-favourable rate (~0.05
+adjusted vs ~0.73 for a naive t-test). This is validation *under those
+assumptions*, not a claim that the extension beats the binary method in general
+or that the assumptions hold in any real trial (see `reports/UNRESOLVED.md` U10);
+the six strata are also thinner than four, so degenerate designs appear sooner.
+In the app, Panel B runs this on demand at your trial's n, directional CGR and
+observed UNKNOWN rate.
 
 ```r
 u_trial <- data.frame(condition = ..., guess = ..., value = ...)   # guess may be UNKNOWN
@@ -180,7 +191,7 @@ with a full input audit and downloadable cleaned data, exclusion log, and report
 | `R/02_bayes.R` | `nig_draws()` — Normal-Inverse-Gamma posterior; conjugate CGR curve |
 | `R/03_jags.R` | corrected JAGS backend and `cgr_check_backends()` |
 | `R/04_kde.R` | faithful port of the original KDE resampling procedure |
-| `R/05_sim.R` | AEB generative model and operating-characteristics study |
+| `R/05_sim.R` | AEB generative model and operating-characteristics study (+ UNKNOWN-aware variant) |
 | `R/06_plot.R` | figures and summary tables |
 | `R/07_rope.R` | `cgr_rope()` region-of-practical-equivalence decomposition |
 | `R/08_frontdoor.R` | `cgrc()` one-call adjuster and `cgrc_headline()` two-probability plain-language summary |

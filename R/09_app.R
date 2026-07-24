@@ -127,8 +127,9 @@ cgrc_normalise_guess <- function(x, allow_unknown = FALSE, unknown_labels = NULL
                "TRUE", "T", "1", "YES", "Y")
   placebo <- c("PL", "PLACEBO", "CONTROL", "SHAM", "FALSE", "F", "0", "NO", "N")
   unknown <- c("UNKNOWN", "UNSURE", "UNCERTAIN", "NOT SURE", "DO NOT KNOW",
-               "DON'T KNOW", "DID NOT KNOW", "I DO NOT KNOW", "I DON'T KNOW",
-               "DK", "IDK",
+               "DON'T KNOW", "DONT KNOW", "DID NOT KNOW", "DIDN'T KNOW",
+               "DIDNT KNOW", "I DO NOT KNOW", "I DON'T KNOW", "I DONT KNOW",
+               "DK", "IDK", "NO IDEA", "CAN'T TELL", "CANT TELL",
                toupper(trimws(as.character(unknown_labels))))
   missing <- is.na(raw) | s == ""               # NA / blank stay missing, never UNKNOWN
   out <- rep(NA_character_, length(s))

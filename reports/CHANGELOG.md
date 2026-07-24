@@ -220,6 +220,24 @@ chance" in the CGR-curve subtitle, the summary-table label, and the front-door
 docs, and reworded in the binary headline. CGR 0.50 is a target correct-guess
 rate, not proof that assignment and guessing are independent.
 
+### CH-23  UNKNOWN-aware generative model and operating characteristics  [addresses U10]
+`sim_aeb_unknown()` extends the AEB model with an observed "I do not know"
+response under two explicit, deliberately-chosen assumptions: (A1) the
+UNKNOWN-response rate is equal in both arms, and (A2) an UNKNOWN responder carries
+no expectancy. `cgr_unknown_operating()` is the six-stratum analogue of
+`cgr_operating()` and reports adjusted bias, RMSE, 95% coverage, favourable-flag
+rates, the naive-t significance rate, and the (higher, six-stratum)
+empty-stratum rate; `cgr_unknown_min_stratum()` is the matching feasibility
+early-warning. **Result under A1/A2:** the estimator of `Delta(0.50, u_obs)` is
+essentially unbiased for the direct effect with ~0.95 coverage, and controls the
+pure-expectancy false-favourable rate (~0.05 adjusted vs ~0.73 for the naive
+t-test). This addresses the empirical half of U10 (the interpretive assumptions
+remain). The Shiny Panel B now runs this on demand at the uploaded trial's n,
+directional CGR and observed UNKNOWN rate, replacing the previously-disabled
+design bridge; the binary Panel A lookup is untouched and still not reused for
+UNKNOWN designs. `cgrc_normalise_guess()` also gained apostrophe-free and a few
+extra UNKNOWN synonyms ("dont know", "no idea", "cant tell", ...).
+
 ### CH-22  Seed arguments on the posterior front doors
 `cgrc()`, `cgrc_headline()`, `cgrc_unknown()`, `cgrc_unknown_headline()` and
 `cgr_unknown_independent()` gained an optional `seed`, recorded in the returned

@@ -1262,20 +1262,44 @@ x-axis is the overall correct-guess rate:
 plot(fit_u)
 ```
 
+## Operating characteristics under an explicit UNKNOWN model
+
+Does the six-stratum estimator actually recover the direct effect? To ask that we
+need a generative model that *emits* UNKNOWN responses. `sim_aeb_unknown()`
+extends the AEB model under two explicit assumptions: **(A1)** the
+UNKNOWN-response rate is equal in both arms, and **(A2)** an UNKNOWN responder
+carries no expectancy (no directional belief, so the perceived-treatment
+$\rightarrow$ expectancy path is absent). `cgr_unknown_operating()` is then the
+six-stratum analogue of `cgr_operating()`.
+
+```{r unknown-oc, cache=TRUE}
+oc <- cgr_unknown_operating(n_trials = 300, n = 300, p_cg = 0.7, u = 0.25, seed = 1)
+oc[, c("DTE","AEB","true","adj_bias","coverage95","p_fav_gt_95","freq_sig","empty_stratum_rate")]
+```
+
+Under A1/A2 the estimator of $\Delta(0.50, u_{\text{obs}})$ is essentially
+unbiased for the direct effect (|bias| well under 0.1) with 95% coverage near
+0.95 in all four scenarios; and in the **pure-expectancy** row (a real effect of
+zero, expectancy on) the adjusted analysis flags a favourable effect only ~5% of
+the time while the naive $t$-test is driven to ~70% by expectancy — the six-
+stratum adjustment removes the inflation just as the binary one does.
+
 ## What this extension does and does not claim
 
 It **preserves** the observed UNKNOWN responses and the observed within-class arm
 ratios $r, s, t$ while varying class mass — the same logic as the binary CGRC.
 It does **not** prove that treatment assignment and all three guess categories
-are independent; $t$ is an assumption exactly as $r, s$ are. `c = 0.50` is
-directional guessing at chance, not proven perfect blinding. And because the
-Section 9 generative model emits only AC/PL guesses, there is **no**
-operating-characteristic simulation with an UNKNOWN response: the extension is
-not calibration-validated and is not claimed to outperform the binary method
-(see `reports/UNRESOLVED.md`, U10). Optional, default-off sensitivities —
-`ratio_uncertainty` (propagate $r,s,t$), `pooling = "partial"` (hierarchical),
-and `cgr_unknown_independent()` (a separate shared-guess-distribution estimand) —
-are provided to probe those assumptions, not to settle them.
+are independent; $t$ is an assumption exactly as $r, s$ are, and `c = 0.50` is
+directional guessing at chance, not proven perfect blinding. The operating
+characteristics above are validation **under A1 and A2** — not a claim that the
+extension beats the binary method in general, nor that A1/A2 hold in any real
+trial; differential UNKNOWN rates and expectancy-carrying UNKNOWN responders are
+not yet characterised, and the six strata are thinner than four so degenerate
+designs appear sooner (see `reports/UNRESOLVED.md`, U10). Optional, default-off
+sensitivities — `ratio_uncertainty` (propagate $r,s,t$), `pooling = "partial"`
+(hierarchical), and `cgr_unknown_independent()` (a separate shared-guess-
+distribution estimand) — are provided to probe those assumptions, not to settle
+them.
 
 ---
 

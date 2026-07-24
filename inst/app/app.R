@@ -431,7 +431,8 @@ server <- function(input, output, session) {
       p(class = "muted", "A ROPE conclusion is only as good as the band width, so",
         "the sensitivity to that width is shown beside it."),
       fluidRow(column(7, plotOutput("b_rope", height = "300px")),
-               column(5, tableOutput("b_sens"))))
+               column(5, tableOutput("b_sens"))),
+      uiOutput("unknown_design_out"))
   })
 
   safe_fit <- reactive(tryCatch(fit(), error = function(e) structure(conditionMessage(e), class = "cgrc_err")))
@@ -642,12 +643,19 @@ server <- function(input, output, session) {
   output$to_design <- renderUI({
     f <- safe_fit(); if (inherits(f, "cgrc_err")) return(NULL)
     if (f$mode == "unknown") {
-      # The design lookup models BINARY guessing only; it has no UNKNOWN
-      # responses, so the bridge is disabled for an UNKNOWN-preserving analysis.
-      return(tagList(tags$hr(), div(class = "muted",
-        "The design check (Panel A) models binary guessing only — it has not",
-        "simulated UNKNOWN responses — so it is disabled for this",
-        "UNKNOWN-preserving analysis. Re-run in binary complete-case mode to use it.")))
+      # The precomputed Panel A lookup models BINARY guessing only, so it cannot
+      # be reused. Instead offer an on-demand UNKNOWN operating-characteristics
+      # run using the six-stratum generative model (cgr_unknown_operating).
+      return(tagList(tags$hr(),
+        actionButton("run_unknown_design",
+          sprintf("Run UNKNOWN design check (n=%d, dir CGR=%.2f, UNKNOWN=%.0f%%)",
+                  nrow(f$trial), f$ufit$observed_directional_cgr,
+                  100 * f$ufit$observed_unknown_rate), class = "btn-sm"),
+        div(class = "muted",
+            "A fresh six-stratum simulation (not the binary lookup). Assumes",
+            "UNKNOWN responders carry no expectancy and the UNKNOWN rate is equal",
+            "across arms; uses the effect, expectancy and trial count set on the",
+            "Design tab.")))
     }
     tagList(tags$hr(), actionButton("do_bridge",
       sprintf("Run the design check at this trial (n=%d, CGR=%.2f)",
@@ -661,6 +669,53 @@ server <- function(input, output, session) {
     updateSliderInput(session, "n", value = round(nrow(f$trial) / 10) * 10)
     updateSliderInput(session, "pcg", value = round(f$fit$observed_cgr, 2))
     updateNavbarPage(session, "navbar", selected = "Design")
+  })
+
+  ## On-demand UNKNOWN design check: operating characteristics of the six-stratum
+  ## estimator at THIS trial's n, directional CGR and observed UNKNOWN rate, from
+  ## the UNKNOWN-aware generative model. Not a lookup - simulated on the spot.
+  udesign_rv <- reactiveVal(NULL)
+  observeEvent(input$run_unknown_design, {
+    f <- safe_fit(); if (inherits(f, "cgrc_err") || f$mode != "unknown") return()
+    nt <- input$n_trials
+    withProgress(message = sprintf("Simulating %d UNKNOWN trials x 4 scenarios...", nt),
+                 value = 0.3, {
+      op <- cgr_unknown_operating(
+        n_trials = nt, n = nrow(f$trial),
+        p_cg = round(f$ufit$observed_directional_cgr, 2),
+        u    = round(f$ufit$observed_unknown_rate, 2),
+        mu_dte = as.numeric(input$eff), mu_aeb = as.numeric(input$mu_aeb), seed = 1)
+      incProgress(0.7)
+      attr(op, "n_trials") <- nt
+      udesign_rv(op)
+    })
+  })
+  # reset the readout whenever a new analysis is run, so a stale table never shows
+  observeEvent(input$analyse, udesign_rv(NULL))
+  output$unknown_design_out <- renderUI({
+    f <- safe_fit(); if (inherits(f, "cgrc_err") || f$mode != "unknown") return(NULL)
+    op <- udesign_rv(); if (is.null(op)) return(NULL)
+    minstr <- cgr_unknown_min_stratum(nrow(f$trial),
+                round(f$ufit$observed_directional_cgr, 2),
+                round(f$ufit$observed_unknown_rate, 2))
+    tagList(br(), h4(sprintf("UNKNOWN design check (%d simulated trials)", attr(op, "n_trials"))),
+      p(class = "muted", sprintf(paste(
+        "Six-stratum operating characteristics at n=%d, directional CGR=%.2f,",
+        "UNKNOWN rate=%.0f%%, true effect=%.1f, expectancy=%.1f. Smallest expected",
+        "stratum ~%.0f. 'true' is the direct effect the adjusted estimate targets."),
+        nrow(f$trial), round(f$ufit$observed_directional_cgr, 2),
+        100 * round(f$ufit$observed_unknown_rate, 2),
+        as.numeric(input$eff), as.numeric(input$mu_aeb), minstr)),
+      renderTable({
+        data.frame(scenario = CELL_LABEL[paste0(op$DTE, op$AEB)],
+                   `true` = round(op$true, 2),
+                   `adj bias` = round(op$adj_bias, 3),
+                   `95% coverage` = round(op$coverage95, 3),
+                   `adjusted flags` = round(op$p_fav_gt_95, 3),
+                   `unadj significant` = round(op$freq_sig, 3),
+                   `empty-stratum` = paste0(round(100 * op$empty_stratum_rate, 1), "%"),
+                   check.names = FALSE)
+      }, digits = 3))
   })
 }
 
