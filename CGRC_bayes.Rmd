@@ -880,7 +880,7 @@ narrows it if a smaller difference matters for a given outcome.
 set.seed(2)
 h <- cgrc_headline(panas, direction = 1, n_draws = N_DRAWS)
 
-# the two questions, before and after correcting to perfect blinding
+# the two questions, before and after reweighting to a target CGR of 0.50
 data.frame(
   question = c("P(favourable effect)", "P(meaningful, beyond delta)"),
   raw            = round(c(h$p_dir_obs,   h$p_meaningful_obs),   2),
@@ -1106,7 +1106,7 @@ ggplot(stack, aes(cgr, p, fill = region)) +
   labs(x = "Correct guess rate (CGR)", y = "posterior probability", fill = NULL,
        title = "ROPE decomposition of the CGR-adjusted effect",
        subtitle = paste("regions are exhaustive and sum to 1 at every CGR;",
-                        "black = perfect blinding, green = observed CGR")) +
+                        "black = target CGR 0.50 (guessing at chance), green = observed CGR")) +
   theme_minimal(base_size = 10) +
   theme(legend.position = "bottom", panel.grid.minor = element_blank())
 ```
@@ -1129,6 +1129,177 @@ Energy VAS is the only outcome whose conclusion is stable across every width —
 the probability of a meaningful benefit stays high even at $\delta = 0.3$ SD.
 PANAS and Mood VAS flip from "probably meaningful" to "probably negligible" as
 $\delta$ widens, exactly the fragility a single tail number would have concealed.
+
+---
+
+# Extension for UNKNOWN treatment guesses
+
+> **This section documents an extension implemented by `cgrc.bayes`. It is not
+> part of the original CGRC formulation of Szigeti et al., and nothing above
+> changes.** The binary four-stratum estimand, its posterior, and all published
+> results are unaffected; the extension lives entirely in new functions.
+
+Real trials often let a participant answer **"I do not know"** to the guess
+question. Dropping those participants, or coding them as incorrect guesses or as
+placebo, invents information the trial never collected. The extension keeps
+UNKNOWN as an observed third response category using **six strata**
+($\text{ACAC}, \text{ACPL}, \text{ACU}, \text{PLAC}, \text{PLPL}, \text{PLU}$,
+arm $\times$ guess with $\text{U} = $ UNKNOWN).
+
+## The six-stratum estimand
+
+Write $u$ for the UNKNOWN-response rate and $c$ for the **directional**
+correct-guess rate — the correct-guess rate *among participants who gave an
+AC/PL guess*. With the observed within-class arm shares
+$r = \text{PLPL}/(\text{PLPL}+\text{ACAC})$,
+$s = \text{ACPL}/(\text{ACPL}+\text{PLAC})$ and
+$t = \text{ACU}/(\text{ACU}+\text{PLU})$, the six weights at target $(c, u)$ are
+
+$$
+\begin{aligned}
+w_{\text{ACAC}} &= (1-u)\,c\,(1-r), & w_{\text{PLPL}} &= (1-u)\,c\,r, \\
+w_{\text{ACPL}} &= (1-u)(1-c)\,s,   & w_{\text{PLAC}} &= (1-u)(1-c)(1-s), \\
+w_{\text{ACU}}  &= u\,t,            & w_{\text{PLU}}  &= u\,(1-t),
+\end{aligned}
+$$
+
+which sum to one; the correct class carries mass $(1-u)c$, the incorrect class
+$(1-u)(1-c)$, and the UNKNOWN class $u$. The contrast is
+$\Delta(c,u) = \mu_{\text{AC}}(c,u) - \mu_{\text{PL}}(c,u)$, each arm mean being
+the weight-averaged stratum mean within that arm. The default analysis holds
+$u = u_{\text{obs}}$ and varies $c$; the primary adjusted estimate is
+$\Delta(0.50,\, u_{\text{obs}})$ — *directional guessing at chance while holding
+the observed UNKNOWN-response rate fixed*, which is **not** the same as "perfect
+blinding".
+
+## Two exact properties
+
+**Observed-value identity.** At $(c_{\text{obs}}, u_{\text{obs}})$ each within-arm
+weight reduces to $n_{\text{stratum}}/n_{\text{total}}$, so
+$\Delta(c_{\text{obs}}, u_{\text{obs}})$ equals the raw active$-$placebo mean
+difference. **Reduction.** At $u = 0$ every weight collapses to the four-stratum
+$w$, so $\Delta(c, 0)$ equals the binary `cgr_delta(c, ...)` exactly. Both are
+checked here on a simulated six-stratum trial:
+
+```{r unknown-props}
+# a simulated six-stratum trial with an UNKNOWN response category
+set.seed(20260724)
+mk_unknown <- function(counts, arm_shift = 2, sd = 3) {
+  do.call(rbind, Map(function(nm, k) {
+    if (k == 0) return(NULL)
+    cond <- substr(nm, 1, 2); g <- substring(nm, 3); g <- ifelse(g == "U", "UNKNOWN", g)
+    data.frame(condition = cond, guess = g,
+               value = rnorm(k, 10 + (cond == "AC") * arm_shift, sd))
+  }, names(counts), counts))
+}
+d_u  <- mk_unknown(c(ACAC = 40, ACPL = 18, ACU = 22, PLAC = 20, PLPL = 34, PLU = 16))
+st_u <- cgr_unknown_strata(d_u); o_u <- cgr_unknown_observed(st_u)
+rat  <- cgr_unknown_ratios(st_u)
+mu_u <- setNames(lapply(UNKNOWN_STRATA, function(nm) mean(st_u[[nm]])), UNKNOWN_STRATA)
+
+identity_gap <- cgr_unknown_delta(o_u$c_obs, o_u$u_obs, mu_u, rat$r, rat$s, rat$t) -
+  (mean(d_u$value[d_u$condition == "AC"]) - mean(d_u$value[d_u$condition == "PL"]))
+
+# reduction at u = 0 against the binary estimand on a binary trial
+d_bin <- sim_aeb(400, 0.7, dte_on = TRUE)
+stb <- cgr_strata(d_bin); ratb <- cgr_ratios(stb); mub <- lapply(stb, mean)
+stu <- cgr_unknown_strata(d_bin); ratu <- cgr_unknown_ratios(stu)
+muu <- setNames(lapply(UNKNOWN_STRATA,
+  function(nm) if (length(stu[[nm]])) mean(stu[[nm]]) else NA_real_), UNKNOWN_STRATA)
+reduction_gap <- max(abs(vapply(GRID, function(cc)
+  cgr_unknown_delta(cc, 0, muu, ratu$r, ratu$s, ratu$t) - cgr_delta(cc, mub, ratb$r, ratb$s),
+  numeric(1))))
+
+cat(sprintf("observed-value identity gap : %.2e\n", abs(identity_gap)))
+cat(sprintf("max reduction gap at u = 0  : %.2e\n", reduction_gap))
+```
+
+## Reproducing two audited count structures
+
+The extension must reproduce these count tables exactly (they are validation
+targets for the *counts*, not results to interpret):
+
+```{r unknown-counts}
+tab <- function(counts, label) {
+  o <- cgr_unknown_observed(cgr_unknown_strata(mk_unknown(counts)))
+  data.frame(trial = label, n_total = o$n_total, n_unknown = o$n_unknown,
+             u_obs = round(o$u_obs, 4), n_directional = o$n_directional,
+             c_obs = round(o$c_obs, 4))
+}
+rbind(
+  tab(c(ACAC = 26, ACPL = 1, ACU = 12, PLAC = 21, PLPL = 3, PLU = 14), "Santana-Penin (n=77)"),
+  tab(c(ACAC = 9,  ACPL = 5, ACU = 5,  PLAC = 8,  PLPL = 5, PLU = 6),  "ketamine (n=38)"))
+```
+
+Santana-Penin gives $u = 26/77 = 0.338$ and directional $c = 29/51 = 0.569$;
+the ketamine belief subsample gives $u = 11/38 = 0.289$ and $c = 14/27 = 0.519$.
+
+## Adjusted analysis and backend agreement
+
+```{r unknown-fit}
+fit_u <- cgrc_unknown(d_u, n_draws = N_DRAWS, seed = 1)
+fit_u$summary
+```
+
+```{r unknown-backend, eval=has_jags, cache=TRUE}
+chk <- cgr_unknown_check_backends(d_u, grid = seq(0, 1, length.out = 21),
+                                  n_draws = 30000,
+                                  jags_args = list(n_iter = 6000, n_burn = 1500, n_chains = 4))
+cat(sprintf("UNKNOWN conjugate vs JAGS: max|z| = %.2f, max Rhat = %.4f, min ESS = %.0f\n%s\n",
+            chk$max_abs_z, chk$max_rhat, chk$min_ess, chk$verdict))
+```
+
+```{r unknown-backend-skip, eval=!has_jags, echo=FALSE}
+cat("JAGS not available in this render; the UNKNOWN backend-agreement check was",
+    "not run, so the two-backend identity for the extension is unverified here.\n")
+```
+
+The x-axis of the extension's curve is the **directional** correct-guess rate,
+and the held UNKNOWN rate is stated in the caption — the labels never imply the
+x-axis is the overall correct-guess rate:
+
+```{r unknown-plot, fig.height=5}
+plot(fit_u)
+```
+
+## Operating characteristics under an explicit UNKNOWN model
+
+Does the six-stratum estimator actually recover the direct effect? To ask that we
+need a generative model that *emits* UNKNOWN responses. `sim_aeb_unknown()`
+extends the AEB model under two explicit assumptions: **(A1)** the
+UNKNOWN-response rate is equal in both arms, and **(A2)** an UNKNOWN responder
+carries no expectancy (no directional belief, so the perceived-treatment
+$\rightarrow$ expectancy path is absent). `cgr_unknown_operating()` is then the
+six-stratum analogue of `cgr_operating()`.
+
+```{r unknown-oc, cache=TRUE}
+oc <- cgr_unknown_operating(n_trials = 300, n = 300, p_cg = 0.7, u = 0.25, seed = 1)
+oc[, c("DTE","AEB","true","adj_bias","coverage95","p_fav_gt_95","freq_sig","empty_stratum_rate")]
+```
+
+Under A1/A2 the estimator of $\Delta(0.50, u_{\text{obs}})$ is essentially
+unbiased for the direct effect (|bias| well under 0.1) with 95% coverage near
+0.95 in all four scenarios; and in the **pure-expectancy** row (a real effect of
+zero, expectancy on) the adjusted analysis flags a favourable effect only ~5% of
+the time while the naive $t$-test is driven to ~70% by expectancy — the six-
+stratum adjustment removes the inflation just as the binary one does.
+
+## What this extension does and does not claim
+
+It **preserves** the observed UNKNOWN responses and the observed within-class arm
+ratios $r, s, t$ while varying class mass — the same logic as the binary CGRC.
+It does **not** prove that treatment assignment and all three guess categories
+are independent; $t$ is an assumption exactly as $r, s$ are, and `c = 0.50` is
+directional guessing at chance, not proven perfect blinding. The operating
+characteristics above are validation **under A1 and A2** — not a claim that the
+extension beats the binary method in general, nor that A1/A2 hold in any real
+trial; differential UNKNOWN rates and expectancy-carrying UNKNOWN responders are
+not yet characterised, and the six strata are thinner than four so degenerate
+designs appear sooner (see `reports/UNRESOLVED.md`, U10). Optional, default-off
+sensitivities — `ratio_uncertainty` (propagate $r,s,t$), `pooling = "partial"`
+(hierarchical), and `cgr_unknown_independent()` (a separate shared-guess-
+distribution estimand) — are provided to probe those assumptions, not to settle
+them.
 
 ---
 
@@ -1219,7 +1390,7 @@ design:
 library(cgrc.bayes)
 
 # 1. Adjust your own trial. `my_trial` needs three columns: condition (AC/PL),
-#    guess (AC/PL), value. Returns the curve, the estimate at perfect blinding
+#    guess (AC/PL), value. Returns the curve, the estimate at target CGR 0.50
 #    (CGR 0.50) and the posterior probability the effect is favourable.
 cgrc(my_trial)
 

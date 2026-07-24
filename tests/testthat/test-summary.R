@@ -30,7 +30,7 @@ test_that("cgrc() returns a summarised, printable adjusted analysis", {
   d <- sim_aeb(300, dte_on = TRUE)
   res <- cgrc(d, n_draws = 4000)
   expect_s3_class(res, "cgrc")
-  expect_named(res, c("curve", "summary", "observed_cgr"))
+  expect_named(res, c("curve", "summary", "observed_cgr", "seed"))
   # the curve includes the EXACT observed CGR, so no grid-snapping
   expect_true(any(abs(res$curve$cgr - res$observed_cgr) < 1e-12))
   expect_equal(nrow(res$summary), 2)              # observed + perfect blinding

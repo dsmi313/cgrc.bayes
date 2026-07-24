@@ -88,6 +88,81 @@ cgrc_power_curve <- function(lut, p_cg, true_effect) {
                numeric(1)))
 }
 
+# Accessor for the precomputed UNKNOWN-preserving operating-characteristics
+# lookup (inst/extdata/cgrc_unknown_lookup.rds, built by
+# data-raw/build_unknown_lookup.R). Returns NULL if it has not been built, so the
+# app can fall back gracefully rather than error.
+cgrc_unknown_lookup <- function() {
+  f <- system.file("extdata", "cgrc_unknown_lookup.rds", package = "cgrc.bayes")
+  if (!nzchar(f) || !file.exists(f)) return(NULL)
+  readRDS(f)
+}
+
+# Operating characteristics of the UNKNOWN estimator for one (DTE, AEB) scenario
+# at arbitrary (n, p_cg), read from the UNKNOWN lookup. Mirrors cgrc_op_at():
+# bilinear in (n, p_cg); true_effect and u are snapped to their nearest grid
+# levels. Returns a one-row data.frame plus interpolated/clamped flags.
+cgrc_unknown_op_at <- function(lut, n, p_cg, true_effect, u, dte, aeb) {
+  sub <- lut[lut$DTE == dte & lut$AEB == aeb, ]
+  us  <- sort(unique(sub$u)); uu <- us[which.min(abs(us - u))]
+  sub <- sub[sub$u == uu, ]
+  effs <- sort(unique(sub$true_effect)); eff <- effs[which.min(abs(effs - true_effect))]
+  sub  <- sub[sub$true_effect == eff, ]
+  if (!nrow(sub)) stop("no UNKNOWN-lookup rows for that scenario", call. = FALSE)
+  metrics <- c("unadj_bias", "adj_bias", "adj_rmse", "coverage95",
+               "p_fav_gt_95", "p_fav_gt_975", "freq_sig", "empty_stratum_rate")
+  metrics <- metrics[metrics %in% names(sub)]
+  vals <- vapply(metrics, function(m) .cgrc_bilin(sub, "n", "p_cg", m, n, p_cg),
+                 numeric(1))
+  on_grid <- n %in% sub$n && p_cg %in% sub$p_cg
+  clamped <- n < min(sub$n) || n > max(sub$n) ||
+             p_cg < min(sub$p_cg) || p_cg > max(sub$p_cg)
+  cbind(data.frame(n = n, p_cg = p_cg, true_effect = eff, u = uu,
+                   DTE = dte, AEB = aeb,
+                   interpolated = !on_grid, clamped = clamped),
+        as.data.frame(as.list(vals)))
+}
+
+# Power of the ADJUSTED UNKNOWN estimator over n, at fixed p_cg, u and effect
+# (the DTE-on / AEB-off row - clean, expectancy-free power).
+cgrc_unknown_power_curve <- function(lut, p_cg, true_effect, u) {
+  ns <- sort(unique(lut$n))
+  data.frame(n = ns,
+             power = vapply(ns, function(nn)
+               cgrc_unknown_op_at(lut, nn, p_cg, true_effect, u, 1, 0)$p_fav_gt_95,
+               numeric(1)))
+}
+
+# Plain-language verdict for an UNKNOWN-preserving design, computed from the
+# UNKNOWN lookup (never hand-written). States the same trade-off cgrc_verdict()
+# does, but names the directional CGR and the held UNKNOWN rate, and does not
+# pronounce a design "safe".
+cgrc_unknown_verdict <- function(lut, n, p_cg, true_effect, u) {
+  minstr <- cgr_unknown_min_stratum(n, p_cg, u)
+  fp  <- cgrc_unknown_op_at(lut, n, p_cg, true_effect, u, 0, 1)   # pure expectancy
+  feas <- if (minstr < 15) sprintf(
+    paste0(" (The smallest of the six strata averages ~%.0f participants here, so ",
+           "the estimand can be undefined for some trials - see feasibility.)"),
+    minstr) else ""
+  if (true_effect == 0) {
+    sprintf(paste0("UNKNOWN-preserving design at n=%d, directional CGR %.0f%%, ",
+      "UNKNOWN rate %.0f%%, no true effect: when the apparent signal is pure ",
+      "expectancy, the naive analysis reaches p<0.05 in %.0f%% of simulated ",
+      "trials, while the UNKNOWN-adjusted analysis reaches posterior P>0.95 in ",
+      "%.0f%%.%s"),
+      n, 100 * p_cg, 100 * u, 100 * fp$freq_sig, 100 * fp$p_fav_gt_95, feas)
+  } else {
+    pw <- cgrc_unknown_op_at(lut, n, p_cg, true_effect, u, 1, 0)   # clean power
+    sprintf(paste0("UNKNOWN-preserving design at n=%d, directional CGR %.0f%%, ",
+      "UNKNOWN rate %.0f%%: for a real %.1f-point effect the UNKNOWN-adjusted ",
+      "analysis reaches posterior P>0.95 in %.0f%% of simulated trials. When the ",
+      "apparent effect is instead pure expectancy, the naive analysis reaches ",
+      "p<0.05 in %.0f%% and the adjusted analysis in %.0f%%.%s"),
+      n, 100 * p_cg, 100 * u, true_effect, 100 * pw$p_fav_gt_95,
+      100 * fp$freq_sig, 100 * fp$p_fav_gt_95, feas)
+  }
+}
+
 # Normalise an arm / guess coding to "AC"/"PL", erroring (naming the offending
 # level) rather than guessing. Accepts AC/PL, MD/PL, active/placebo,
 # drug/placebo, microdose/placebo, 1/0, TRUE/FALSE, yes/no.
@@ -104,6 +179,197 @@ cgrc_normalise_arm <- function(x, what = "value") {
                  what, paste(shQuote(bad), collapse = ", ")), call. = FALSE)
   }
   out
+}
+
+# Normalise a GUESS coding to "AC"/"PL"/"UNKNOWN". Unlike cgrc_normalise_arm(),
+# this optionally recognises an explicit UNKNOWN / "I do not know" response and
+# keeps missing data (NA or blank) as missing - an observed UNKNOWN response and
+# absent data are different things and must not be conflated. Unrecognised values
+# error, naming the offending labels, rather than being guessed. When
+# allow_unknown = FALSE an UNKNOWN synonym is treated as unrecognised (rejected
+# explicitly), so the caller cannot silently admit UNKNOWN into a binary analysis.
+cgrc_normalise_guess <- function(x, allow_unknown = FALSE, unknown_labels = NULL,
+                                 what = "treatment guessed") {
+  raw <- as.character(x)
+  s <- toupper(trimws(raw))
+  # normalise apostrophe variants to a plain ' with fixed byte replacement so this
+  # works in a C locale too, where a multibyte regex character class fails. \u
+  # escapes keep the source pure-ASCII; useBytes avoids any locale translation.
+  for (ap in c("\u2019", "\u02bc", "\u2018", "`"))
+    s <- gsub(ap, "'", s, fixed = TRUE, useBytes = TRUE)
+  s <- gsub("[[:space:]]+", " ", s)             # collapse internal whitespace
+  active  <- c("AC", "MD", "ACTIVE", "DRUG", "MICRODOSE", "TREATMENT",
+               "TRUE", "T", "1", "YES", "Y")
+  placebo <- c("PL", "PLACEBO", "CONTROL", "SHAM", "FALSE", "F", "0", "NO", "N")
+  unknown <- c("UNKNOWN", "UNSURE", "UNCERTAIN", "NOT SURE", "DO NOT KNOW",
+               "DON'T KNOW", "DONT KNOW", "DID NOT KNOW", "DIDN'T KNOW",
+               "DIDNT KNOW", "I DO NOT KNOW", "I DON'T KNOW", "I DONT KNOW",
+               "DK", "IDK", "NO IDEA", "CAN'T TELL", "CANT TELL",
+               toupper(trimws(as.character(unknown_labels))))
+  missing <- is.na(raw) | s == ""               # NA / blank stay missing, never UNKNOWN
+  out <- rep(NA_character_, length(s))
+  out[s %in% active]  <- "AC"
+  out[s %in% placebo] <- "PL"
+  if (allow_unknown) out[s %in% unknown] <- "UNKNOWN"
+  out[missing] <- NA_character_
+  bad <- unique(raw[!missing & is.na(out)])      # present, but mapped to nothing
+  if (length(bad)) {
+    hint <- if (allow_unknown) "AC/PL or an UNKNOWN response" else "AC/PL (active/placebo)"
+    stop(sprintf("could not map %s level(s) %s to %s; recode them.",
+                 what, paste(shQuote(bad), collapse = ", "), hint), call. = FALSE)
+  }
+  out
+}
+
+# Input audit for an uploaded trial. Classifies every row instead of silently
+# dropping it with complete.cases(): a row can be missing its condition, missing
+# its guess, an observed UNKNOWN response (NOT an exclusion - kept when preserving
+# UNKNOWN), missing its outcome, or a non-numeric outcome. A genuinely
+# unmappable code (e.g. "banana") still errors via the normalisers - that is a
+# data error, not a missing value. Returns the clean analysis frame, an exclusion
+# log, a count summary, and whether any UNKNOWN responses were seen. Blank/NA are
+# missing; an observed UNKNOWN is not.
+cgrc_input_audit <- function(condition, guess, value, unknown_level = "UNKNOWN") {
+  n  <- length(condition)
+  cr <- trimws(as.character(condition)); gr <- trimws(as.character(guess))
+  vr <- as.character(value)
+  miss_c <- is.na(condition) | cr == ""
+  miss_g <- is.na(guess)     | gr == ""
+  miss_v <- is.na(value)     | trimws(vr) == ""
+  vnum   <- suppressWarnings(as.numeric(vr))
+  nonnum <- !miss_v & is.na(vnum)
+
+  cond <- rep(NA_character_, n); g <- rep(NA_character_, n)
+  if (any(!miss_c))
+    cond[!miss_c] <- cgrc_normalise_arm(condition[!miss_c], "treatment received")
+  if (any(!miss_g))
+    g[!miss_g] <- cgrc_normalise_guess(guess[!miss_g], allow_unknown = TRUE,
+                                       unknown_labels = unknown_level)
+  is_unknown <- !miss_g & !is.na(g) & g == "UNKNOWN"
+
+  # exclusion reason, by precedence (a missing condition wins over a bad outcome)
+  reason <- rep("ok", n)
+  reason[nonnum] <- "non-numeric outcome"
+  reason[miss_v] <- "missing outcome"
+  reason[miss_g] <- "missing guess"
+  reason[miss_c] <- "missing condition"
+  excluded <- reason != "ok"
+
+  summary <- c(n_input = n,
+               missing_condition  = sum(miss_c),
+               missing_guess      = sum(miss_g),
+               observed_unknown   = sum(is_unknown),
+               missing_outcome    = sum(miss_v),
+               nonnumeric_outcome = sum(nonnum),
+               excluded           = sum(excluded),
+               n_analysis         = sum(!excluded))
+  list(
+    clean = data.frame(condition = cond[!excluded], guess = g[!excluded],
+                       value = vnum[!excluded], stringsAsFactors = FALSE),
+    log = data.frame(row = which(excluded), reason = reason[excluded],
+                     stringsAsFactors = FALSE),
+    summary = summary,
+    has_unknown = sum(is_unknown) > 0)
+}
+
+# Build a self-contained Markdown analysis report from the app's assembled
+# analysis object `f` (see inst/app/app.R). Contains the input audit, exclusions,
+# stratum counts, observed CGR and UNKNOWN rate, raw and adjusted estimates, the
+# identity check, posterior probabilities, ROPE results, warnings, the package
+# version, the random seed, and an exact method description. Returns a character
+# vector of lines. Kept in the package (not app.R) so it is testable and so the
+# app carries no statistics of its own.
+cgrc_build_report <- function(f) {
+  ver <- tryCatch(as.character(utils::packageVersion("cgrc.bayes")), error = function(e) "NA")
+  s <- f$audit$summary
+  L <- c()
+  add <- function(...) L <<- c(L, sprintf(...))
+  add("# CGRC analysis report")
+  add("")
+  add("- Generated: %s", format(Sys.time(), "%Y-%m-%d %H:%M:%S"))
+  add("- Package: cgrc.bayes %s", ver)
+  add("- Random seed: %s", if (is.null(f$seed)) "not set" else as.character(f$seed))
+  meth <- if (f$mode == "unknown")
+    paste("UNKNOWN-preserving CGRC extension (six strata; observed UNKNOWN rate",
+          "held fixed while the directional correct-guess rate is varied). This",
+          "is an extension implemented by cgrc.bayes, not the original Szigeti",
+          "estimand.")
+  else "Binary four-stratum CGRC (Normal-Inverse-Gamma conjugate posterior)."
+  add("- Method: %s", meth)
+  add("")
+  add("## Input audit")
+  add("")
+  add("| Quantity | n |")
+  add("|---|---|")
+  add("| Rows uploaded | %d |", s[["n_input"]])
+  add("| Analysed | %d |", nrow(f$trial))
+  add("| Missing condition | %d |", s[["missing_condition"]])
+  add("| Missing guess | %d |", s[["missing_guess"]])
+  add("| Missing outcome | %d |", s[["missing_outcome"]])
+  add("| Non-numeric outcome | %d |", s[["nonnumeric_outcome"]])
+  add("| Observed UNKNOWN responses | %d |", s[["observed_unknown"]])
+  if (isTRUE(f$n_excl_unknown > 0))
+    add("| UNKNOWN excluded (complete-case) | %d |", f$n_excl_unknown)
+  add("")
+
+  if (f$mode == "unknown") {
+    st <- cgr_unknown_strata(f$trial); n <- lengths(st)
+    add("## Stratum counts (UNKNOWN preserved)")
+    add("")
+    add("| Stratum | n |")
+    add("|---|---|")
+    for (k in UNKNOWN_STRATA) add("| %s | %d |", k, n[[k]])
+    add("")
+    add("- Observed directional CGR: %.4f", f$ufit$observed_directional_cgr)
+    add("- Observed UNKNOWN rate: %.4f (held fixed at %.4f)",
+        f$ufit$observed_unknown_rate, f$ufit$target_unknown_rate)
+    add("- n total / directional / UNKNOWN: %d / %d / %d",
+        f$ufit$n_total, f$ufit$n_directional, f$ufit$n_unknown)
+    sm <- f$ufit$summary; z <- cgr_unknown_reference_line_test(f$trial)
+    h <- f$uhead
+    obs_est <- sm$post_mean[1]; adj_est <- sm$post_mean[2]
+  } else {
+    st <- cgr_strata(f$trial)
+    add("## Stratum counts")
+    add("")
+    add("| Stratum | n |")
+    add("|---|---|")
+    for (k in STRATA) add("| %s | %d |", k, length(st[[k]]))
+    add("")
+    add("- Observed CGR: %.4f", f$fit$observed_cgr)
+    sm <- f$fit$summary; z <- cgr_reference_line_test(f$trial, f$fit$observed_cgr)
+    h <- f$head
+    obs_est <- sm$post_mean[1]; adj_est <- sm$post_mean[2]
+  }
+  add("")
+  add("## Estimates")
+  add("")
+  add("| | posterior mean | 95%% CrI | P(favourable) |")
+  add("|---|---|---|---|")
+  add("| Raw (observed CGR) | %.3f | %.3f to %.3f | %.3f |",
+      sm$post_mean[1], sm$cri_lo[1], sm$cri_hi[1], sm$p_favourable[1])
+  add("| Adjusted (CGR 0.50) | %.3f | %.3f to %.3f | %.3f |",
+      sm$post_mean[2], sm$cri_lo[2], sm$cri_hi[2], sm$p_favourable[2])
+  add("")
+  add("- Meaningful-difference threshold delta: %.3f outcome units", f$delta)
+  add("- P(meaningful) raw / adjusted: %.3f / %.3f",
+      h$p_meaningful_obs, h$p_meaningful_blind)
+  add("")
+  add("## Identity check")
+  add("")
+  add("At the observed CGR the reweighting is a no-op: Delta = raw arm-mean")
+  add("difference to %.1e (should be ~0).", abs(z$D_at_obs - z$raw_mean_diff))
+  add("")
+  add("## Region of practical equivalence (at CGR 0.50)")
+  add("")
+  rope <- if (f$mode == "unknown") f$urope else f$rope
+  i <- which.min(abs(rope$cgr - 0.5))
+  add("- P(meaningful benefit): %.3f", rope$p_benefit[i])
+  add("- P(practically negligible): %.3f", rope$p_negligible[i])
+  add("- P(meaningful harm): %.3f", rope$p_harm[i])
+  add("")
+  add("_Report text: %s_", h$text)
+  L
 }
 
 # Should pct_attenuation be shown? No when the unadjusted estimate is not

@@ -15,7 +15,12 @@ Description: A reproduction of the Correct Guess Rate Curve (CGRC) method of
     study, a region-of-practical-equivalence decomposition, and the
     reference-line diagnostic. The estimand is unchanged throughout; this is a
     different way of computing uncertainty around the published quantity, not a
-    different quantity.
+    different quantity. Also provides an additive, clearly-labelled
+    UNKNOWN-preserving extension that keeps an observed "I do not know" guess as
+    a third response category (a six-stratum generalisation that reduces exactly
+    to the four-stratum method when there are no UNKNOWN responses); this
+    extension is implemented by this package and is not part of the original
+    CGRC formulation.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Imports:

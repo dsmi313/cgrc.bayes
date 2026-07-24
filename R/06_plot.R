@@ -7,8 +7,8 @@ cgr_plot <- function(cur, obs_cgr, title = NULL,
   if (!requireNamespace("ggplot2", quietly = TRUE)) {
     stop("needs ggplot2", call. = FALSE)
   }
-  lev <- c("Treatment effect (posterior mean, 95% CrI)",
-           sprintf("Posterior probability the effect is %s", direction_label))
+  lev <- c("Treatment effect\n(95% CrI)",
+           sprintf("P(effect %s)", direction_label))
 
   eff <- data.frame(cgr = cur$cgr, method = cur$method, est = cur$est,
                     lo = cur$lo, hi = cur$hi, quantity = lev[1],
@@ -46,13 +46,55 @@ cgr_plot <- function(cur, obs_cgr, title = NULL,
     ggplot2::scale_x_continuous(breaks = c(0, 0.25, 0.5, 0.75, 1)) +
     ggplot2::labs(x = "Correct guess rate (CGR)", y = NULL,
                   colour = NULL, fill = NULL, title = title,
-                  subtitle = sprintf(paste("black dashed = perfect blinding",
-                                           "(0.50); green dashed = observed",
-                                           "CGR (%.3f)"), obs_cgr)) +
-    ggplot2::theme_minimal(base_size = 11) +
+                  subtitle = sprintf(paste("black dashed = target CGR 0.50",
+                                           "(guessing at chance); green dashed =",
+                                           "observed CGR (%.3f)"), obs_cgr)) +
+    ggplot2::theme_minimal(base_size = 15) +
     ggplot2::theme(strip.placement = "outside",
                    panel.grid.minor = ggplot2::element_blank(),
                    legend.position = "top")
+}
+
+# One-dimensional plot for the UNKNOWN-preserving extension. The x-axis is the
+# DIRECTIONAL correct-guess rate (correct among AC/PL responders), NOT the overall
+# correct-guess rate. c = 0.50 is directional guessing at chance, with the UNKNOWN
+# rate held fixed - deliberately not labelled "perfect blinding" unqualified. The
+# held UNKNOWN rate is shown in the caption. `cur` is the output of
+# cgr_unknown_conjugate() (or the curve slot of a cgrc_unknown object).
+cgr_unknown_plot <- function(cur, obs_cgr, u, title = NULL,
+                             show_95_line = TRUE, direction_label = "positive") {
+  if (!requireNamespace("ggplot2", quietly = TRUE)) stop("needs ggplot2", call. = FALSE)
+  lev <- c("Treatment effect\n(95% CrI)",
+           sprintf("P(effect %s)", direction_label))
+  eff <- data.frame(cgr = cur$cgr, est = cur$est, lo = cur$lo, hi = cur$hi,
+                    quantity = lev[1], stringsAsFactors = FALSE)
+  pp  <- data.frame(cgr = cur$cgr, est = cur$p_fav, lo = NA_real_, hi = NA_real_,
+                    quantity = lev[2], stringsAsFactors = FALSE)
+  dat <- rbind(eff, pp); dat$quantity <- factor(dat$quantity, levels = lev)
+  href <- data.frame(quantity = factor(lev, levels = lev),
+                     y = c(0, if (show_95_line) 0.95 else NA_real_))
+  href <- href[!is.na(href$y), ]
+  ggplot2::ggplot() +
+    ggplot2::geom_hline(data = href, ggplot2::aes(yintercept = y),
+                        linetype = "dotted", colour = "grey40") +
+    ggplot2::geom_vline(xintercept = 0.5, linetype = "dashed", colour = "black") +
+    ggplot2::geom_vline(xintercept = obs_cgr, linetype = "dashed", colour = "darkgreen") +
+    ggplot2::geom_ribbon(data = dat[!is.na(dat$lo), ],
+                         ggplot2::aes(x = cgr, ymin = lo, ymax = hi),
+                         fill = "#2471A3", alpha = 0.15) +
+    ggplot2::geom_line(data = dat, ggplot2::aes(x = cgr, y = est),
+                       colour = "#2471A3", linewidth = 0.7) +
+    ggplot2::facet_wrap(~ quantity, ncol = 1, scales = "free_y",
+                        strip.position = "left") +
+    ggplot2::scale_x_continuous(breaks = c(0, 0.25, 0.5, 0.75, 1)) +
+    ggplot2::labs(
+      x = "Directional correct-guess rate among AC/PL responses", y = NULL,
+      title = title,
+      subtitle = "black dashed = directional guessing at chance (0.50); green dashed = observed directional CGR",
+      caption = sprintf("UNKNOWN-response rate held at %.1f%%.", 100 * u)) +
+    ggplot2::theme_minimal(base_size = 15) +
+    ggplot2::theme(strip.placement = "outside",
+                   panel.grid.minor = ggplot2::element_blank())
 }
 
 # Reproduce Szigeti's published twin-axis figure in its OWN visual grammar so a
@@ -138,7 +180,7 @@ cgr_summary_table <- function(cur, obs_cgr, label = "", tol = 1e-6) {
   data.frame(
     outcome = label,
     cgr = c(round(obs_cgr, 4), 0.5),
-    what = c("observed (unadjusted)", "perfect blinding (adjusted)"),
+    what = c("observed (unadjusted)", "reweighted to CGR 0.50 (adjusted)"),
     post_mean = round(c(a$est, h$est), 3),
     cri_lo = round(c(a$lo, h$lo), 3),
     cri_hi = round(c(a$hi, h$hi), 3),
