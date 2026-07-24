@@ -167,6 +167,64 @@ SOURCES.md S4). Consequences:
 - **U9 raised**: guess rates are reversed vs the 2024 review's "higher in the
   active arms" (placebo 0.723 vs microdose 0.528 here).
 
+## Extensions (additive; the binary method is unchanged)
+
+### CH-17  UNKNOWN-preserving CGRC extension  [ADDITIVE - no existing result changes]
+A six-stratum extension (ACAC/ACPL/ACU/PLAC/PLPL/PLU, R/10_unknown.R) that keeps
+an observed "I do not know" guess as a third response category instead of
+dropping it, counting it as wrong, counting it as placebo, or splitting it
+across arms. It holds the observed UNKNOWN-response rate `u` fixed and varies the
+DIRECTIONAL correct-guess rate `c` (correct among AC/PL responders), reweighting
+class mass while preserving the observed within-class arm shares r, s and a third
+share t = ACU/(ACU+PLU).
+**Verified properties (tests/testthat/test-unknown.R):** six weights sum to 1
+and split mass by class; `Delta(c_obs, u_obs)` equals the raw arm-mean difference
+exactly; at `u = 0` every formula reduces exactly to the four-stratum
+`cgr_delta()`; an empty stratum is always forced to structurally zero weight
+through r/s/t and is never estimated; exact Santana-Penin (u = 26/77, c = 29/51)
+and ketamine (u = 11/38, c = 14/27) count tables reproduce.
+**Backend agreement:** `cgr_unknown_check_backends()` ran (JAGS 4.3.2) - PASS
+(max |z| = 1.13, max Rhat = 1.0, min ESS ~31700). Student-t path runs.
+**Explicitly NOT claimed:** that this proves independence of assignment and all
+three guess categories; that `c = 0.50` is "perfect blinding"; that the
+extension outperforms anything (no operating-characteristic simulation with
+UNKNOWN exists - see UNRESOLVED U10). It is an extension by cgrc.bayes, not the
+Szigeti estimand.
+
+### CH-18  Guess normalisation, input audit, and Markdown report
+`cgrc_normalise_guess()` recognises explicit UNKNOWN synonyms and keeps blank/NA
+as MISSING (missing data and an observed UNKNOWN are different). `cgrc_input_audit()`
+classifies every uploaded row (missing condition/guess/outcome, non-numeric
+outcome, observed UNKNOWN) instead of a silent `complete.cases()`.
+`cgrc_build_report()` emits a self-contained Markdown report.
+
+### CH-19  Shiny Panel B: UNKNOWN mode, unit threshold, seed, audit downloads
+Panel B detects UNKNOWN responses and offers preserve (default) vs binary
+complete-case (which reports the exact number excluded); shows six-cell strata
+and directional-CGR labels; lets the meaningful-difference threshold be a
+fraction of SD OR outcome units (no 0.5 cap); takes an explicit seed; offers
+cleaned-data, exclusion-log and report downloads; and disables the binary design
+lookup bridge for an UNKNOWN-preserving analysis (the lookup does not model
+UNKNOWN).
+
+### CH-20  Optional sensitivities (all default-off)
+`cgr_unknown_conjugate(ratio_uncertainty=TRUE)` propagates r/s/t sampling error;
+`cgr_unknown_independent()` is a separate EXPERIMENTAL shared-guess-distribution
+estimand; `cgr_unknown_jags(pooling="partial")` is an assumption-dependent
+hierarchical partial-pooling sensitivity. The independent-stratum, conditional
+model remains the default everywhere.
+
+### CH-21  Terminology: "perfect blinding" qualified
+Unqualified "perfect blinding" replaced with "target CGR 0.50 / guessing at
+chance" in the CGR-curve subtitle, the summary-table label, and the front-door
+docs, and reworded in the binary headline. CGR 0.50 is a target correct-guess
+rate, not proof that assignment and guessing are independent.
+
+### CH-22  Seed arguments on the posterior front doors
+`cgrc()`, `cgrc_headline()`, `cgrc_unknown()`, `cgrc_unknown_headline()` and
+`cgr_unknown_independent()` gained an optional `seed`, recorded in the returned
+object. Default `NULL` preserves prior behaviour (an external `set.seed`).
+
 ## Preserved unchanged
 
 - The estimand: strata, r, s, weights, Delta(c).
@@ -175,3 +233,6 @@ SOURCES.md S4). Consequences:
 - Week-1-only filter and use of raw value as outcome.
 - The supplementary stratum-allocation validation.
 - The published empirical results: PANAS 3.16 -> 1.08 etc. are unchanged.
+- The binary API: cgrc(), cgr_strata(), cgr_delta(), cgr_conjugate(), cgr_jags()
+  and every published four-stratum result are byte-for-byte unchanged; the
+  extension lives in new functions.

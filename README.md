@@ -67,7 +67,8 @@ settings. Panel B (Analyse) takes a CSV of your own trial, adjusts it with
 identity check — then offers to run the design check at your trial's own n and
 observed guess rate.
 
-`cgrc()` returns the CGR-adjusted estimate (at perfect blinding, CGR 0.50), a
+`cgrc()` returns the CGR-adjusted estimate (at a target correct-guess rate of
+0.50 — guessing at chance, not a claim of proven perfect blinding), a
 95% credible interval, and the posterior probability the effect is favourable.
 `cgr_operating()` tells you whether that adjustment is trustworthy for a trial of
 that size and blinding quality in the first place — including an
@@ -92,6 +93,83 @@ a warning that CGR adjustment is fragile for your design.
 | `szigeti_panel(cgr_kde_curve(df), ...)` | reproduce the published twin-axis figure |
 | `cgr_strata`, `cgr_ratios`, `cgr_weights`, `cgr_delta` | the estimand primitives |
 | `sim_aeb(...)` | the activated-expectancy-bias generative model |
+| `cgrc_unknown(df)` | UNKNOWN-preserving extension: six-stratum adjuster keeping "I do not know" |
+| `cgrc_unknown_headline(df)` | two-probability plain-language summary of the UNKNOWN extension |
+| `cgr_unknown_jags(df, pooling)` | six-stratum JAGS backend (`"normal"`/`"t"`; `"none"`/`"partial"` pooling) |
+| `cgr_unknown_check_backends(df)` | verify the UNKNOWN conjugate and JAGS posteriors agree |
+| `cgr_unknown_independent(df)` | experimental shared-guess-distribution estimand (distinct from CGRC) |
+| `cgrc_normalise_guess(x)` | map a guess column to AC/PL/UNKNOWN; blank/NA stay missing |
+| `cgrc_input_audit(...)`, `cgrc_build_report(f)` | per-row input audit and a Markdown analysis report |
+
+## Extension for UNKNOWN treatment guesses
+
+Real trials often let a participant answer **"I do not know"** to the guess
+question. Those responses must not be silently dropped, counted as incorrect
+guesses, counted as placebo, or split across arms without an explicit assumption.
+`cgrc.bayes` adds an **UNKNOWN-preserving extension** that keeps them as a third
+response category.
+
+> **This is an extension implemented by cgrc.bayes. It is not part of the
+> original CGRC formulation of Szigeti et al.** The binary four-stratum method
+> and every published result above are unchanged.
+
+**Six strata** instead of four — `ACAC, ACPL, ACU, PLAC, PLPL, PLU` (arm ×
+guess, where `U` = UNKNOWN). Let
+
+```
+u_obs = n_unknown / n_total                          (observed UNKNOWN-response rate)
+c_obs = n_correct / n_directional                    (correct among AC/PL responders)
+r = PLPL/(PLPL+ACAC)   s = ACPL/(ACPL+PLAC)   t = ACU/(ACU+PLU)
+```
+
+be the observed UNKNOWN rate, the **directional** correct-guess rate, and the
+three preserved within-class arm shares. For a target directional CGR `c` and
+target UNKNOWN rate `u` the six weights are
+
+```
+w_ACAC=(1-u)c(1-r)   w_PLPL=(1-u)c·r        (correct class, mass (1-u)c)
+w_ACPL=(1-u)(1-c)s   w_PLAC=(1-u)(1-c)(1-s) (incorrect class, mass (1-u)(1-c))
+w_ACU =u·t           w_PLU =u(1-t)          (UNKNOWN class, mass u)
+```
+
+and the contrast is `Δ(c,u) = μ_AC(c,u) − μ_PL(c,u)` with each arm mean the
+weight-averaged stratum mean within that arm. Key properties:
+
+- **Observed-value identity.** `Δ(c_obs, u_obs)` equals the raw active−placebo
+  mean difference exactly (each within-arm weight reduces to `n_stratum/n_total`).
+- **Reduction.** At `u = 0` every formula collapses **exactly** to the binary
+  `cgr_delta()` — the extension is a strict generalisation.
+- **Empty cells are safe.** An empty stratum forces its own weight to zero
+  through `r/s/t` (e.g. empty `ACU` ⇒ `t = 0` ⇒ `w_ACU = 0`), so a
+  structurally-zero cell is never estimated. An empty *correct* or *incorrect*
+  directional class is a clear "undefined estimand" error, not a silent guess.
+
+**Why UNKNOWN ≠ an incorrect guess.** A participant who says "I don't know" has
+made no directional claim; scoring them as wrong (or as placebo) invents
+information the trial did not collect. Holding `u` fixed and reweighting only the
+directional guesses keeps the UNKNOWN mass where it was observed.
+
+**Interpretation and limits.** `c = 0.50` means *directional guessing at chance
+with the UNKNOWN rate held fixed* — **not** "perfect blinding", and not proof
+that assignment and all three guess categories are independent. The preserved
+share `t` is an assumption (the observed within-UNKNOWN arm ratio), exactly as
+`r, s` are. There is **no** operating-characteristic simulation with UNKNOWN yet,
+so the extension is not calibration-validated and must not be claimed to
+outperform the binary method (see `reports/UNRESOLVED.md` U10).
+
+```r
+u_trial <- data.frame(condition = ..., guess = ..., value = ...)   # guess may be UNKNOWN
+cgrc_unknown(u_trial)                 # six-stratum adjusted analysis
+cgrc_unknown_headline(u_trial)        # the two-probability plain-language summary
+cgr_unknown_check_backends(u_trial)   # conjugate vs JAGS agreement (needs JAGS)
+```
+
+Optional, default-off sensitivities: `cgr_unknown_conjugate(ratio_uncertainty=TRUE)`
+(propagate r/s/t uncertainty), `cgr_unknown_jags(pooling="partial")` (hierarchical
+partial pooling), and `cgr_unknown_independent()` (a *separate*, experimental
+shared-guess-distribution estimand). In the Shiny app, Panel B detects UNKNOWN
+responses and offers "preserve" (default) or "binary complete-case (exclude)"
+with a full input audit and downloadable cleaned data, exclusion log, and report.
 
 ## What's here
 
@@ -106,7 +184,8 @@ a warning that CGR adjustment is fragile for your design.
 | `R/06_plot.R` | figures and summary tables |
 | `R/07_rope.R` | `cgr_rope()` region-of-practical-equivalence decomposition |
 | `R/08_frontdoor.R` | `cgrc()` one-call adjuster and `cgrc_headline()` two-probability plain-language summary |
-| `R/09_app.R` | Shiny app support: lookup accessor, interpolation, verdict, input normalisation |
+| `R/09_app.R` | Shiny app support: lookup accessor, interpolation, verdict, input normalisation, audit, report |
+| `R/10_unknown.R` | UNKNOWN-preserving six-stratum extension (estimand, posterior, ROPE, headline, sensitivities) |
 | `inst/app/app.R` | the Shiny app (Design + Analyse panels) |
 | `data-raw/build_lookup.R` | precompute the operating-characteristics grid (run once, ~1h) |
 | `inst/extdata/cgrc_lookup.rds` | the precomputed grid, shipped as package data |
