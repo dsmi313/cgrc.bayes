@@ -370,10 +370,12 @@ knitr::kable(data.frame(
   caption = "Original vs Bayesian inference, 300 simulated trials (true Delta = 3)")
 ```
 
-The takeaway: the two methods compute essentially the same estimate; what our version
-adds is an uncertainty summary you can read directly, in place of an averaged
-p-value. This is a difference in how uncertainty is *reported*, not a claim that one
-method is universally better.
+The takeaway: the two approaches agree closely on the point estimand but can produce
+materially different evidence summaries. Under the matched thresholds used here, the
+posterior rule flags the effect more often than the resample-averaged p-value rule.
+This is a difference in how the evidence is *summarised* — the posterior states a
+probability about the effect directly, in place of an averaged p-value — not a claim
+that one method is universally better.
 
 *A note on the "0.975" in that table, since it looks like an odd number.* It is
 there only to make the comparison fair. The original method's decision rule is a
@@ -433,9 +435,9 @@ about two-thirds — and, just as important, the adjusted 95% credible interval
 (`r sprintf("[%.1f, %.1f]", fit_panas$summary$cri_lo[2], fit_panas$summary$cri_hi[2])`)
 now straddles zero, so the probability of even a favourable effect falls to about
 `r sprintf("%.0f%%", 100 * fit_panas$summary$p_favourable[2])`. In plain terms: the
-apparent PANAS benefit is exactly the kind of result that could be substantially an
-artifact of broken blinding — it does not survive the "what if blinding had held?" test
-with any real confidence.
+PANAS result is highly sensitive to the CGRC adjustment — after reweighting to a 50%
+guess rate, the posterior provides substantially weaker support for a favourable
+effect.
 
 The other three outcomes show that the adjustment is not a blunt instrument that simply
 shrinks everything (all four sets of numbers are in the table above):
