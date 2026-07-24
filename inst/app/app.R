@@ -139,15 +139,29 @@ ui <- navbarPage(
         selectInput("col_cond", "Column: treatment received", choices = NULL),
         selectInput("col_guess", "Column: treatment guessed", choices = NULL),
         selectInput("col_value", "Column: outcome value", choices = NULL),
+        textInput("unknown_level", "Extra label meaning \"I do not know\"",
+                  value = "UNKNOWN"),
+        div(class = "muted",
+            "UNKNOWN, unsure, uncertain, \"don't know\", DK/IDK are recognised",
+            "automatically; add your own token here if it differs."),
+        uiOutput("unknown_mode_ui"),
         radioButtons("direction", "Favourable direction",
                      c("higher is better" = "1", "lower is better" = "-1"), "1"),
-        sliderInput("rope", "Meaningful-difference threshold (fraction of outcome SD)",
-                    min = 0.05, max = 0.5, value = 0.5, step = 0.05),
+        radioButtons("threshold_mode", "Meaningful-difference threshold",
+                     c("fraction of outcome SD" = "sd", "outcome units" = "units"), "sd"),
+        conditionalPanel("input.threshold_mode == 'sd'",
+          numericInput("rope", "Threshold (fraction of outcome SD)",
+                       value = 0.5, min = 0.01, step = 0.05)),
+        conditionalPanel("input.threshold_mode == 'units'",
+          numericInput("rope_units", "Threshold (outcome units)",
+                       value = NA, min = 0, step = 0.1)),
         div(class = "muted",
-            "0.5 SD is the minimum important difference Norman (2003) argues for",
-            "and Szigeti's 2024 escitalopram trial adopts. Narrow it for a",
-            "stricter bar; it sets both the headline and the ROPE band."),
+            "0.5 SD is a common minimum important difference (Norman 2003;",
+            "Szigeti 2024). No upper cap — widen it if your field's meaningful",
+            "difference is larger. It sets both the headline and the ROPE band."),
+        numericInput("seed_b", "Random seed", value = 1, min = 0, step = 1),
         actionButton("analyse", "Analyse", class = "btn-primary"),
+        uiOutput("download_ui"),
         uiOutput("to_design")
       ),
       mainPanel(
@@ -304,26 +318,93 @@ server <- function(input, output, session) {
       selected = pick(c("value","outcome","score","y"), nm[min(3,length(nm))]))
   })
 
+  # Does the chosen guess column contain any observed UNKNOWN response? Peeked
+  # reactively so the analysis-mode control can appear before Analyse is clicked.
+  unknown_present <- reactive({
+    req(input$csv, input$col_guess)
+    g <- tryCatch(cgrc_normalise_guess(raw_csv()[[input$col_guess]],
+                    allow_unknown = TRUE, unknown_labels = input$unknown_level),
+                  error = function(e) NULL)
+    !is.null(g) && any(g == "UNKNOWN", na.rm = TRUE)
+  })
+
+  # The analysis-mode control only appears when UNKNOWN responses are present.
+  # Default is to PRESERVE UNKNOWN as a third category.
+  output$unknown_mode_ui <- renderUI({
+    if (!isTRUE(unknown_present())) return(NULL)
+    div(class = "verdict feas", style = "padding:8px 10px;",
+      radioButtons("unknown_mode",
+        HTML("<b>UNKNOWN guesses detected.</b> How should they be handled?"),
+        c("Preserve UNKNOWN as a third response category" = "preserve",
+          "Binary complete-case CGRC (exclude UNKNOWN responses)" = "completecase"),
+        selected = "preserve"))
+  })
+
+  # The meaningful-difference threshold in outcome units, from either control.
+  delta_units <- function(sdy) {
+    if (identical(input$threshold_mode, "units") &&
+        !is.null(input$rope_units) && is.finite(input$rope_units))
+      as.numeric(input$rope_units)
+    else as.numeric(input$rope) * sdy
+  }
+
   fit <- eventReactive(input$analyse, {
     d <- raw_csv()
-    trial <- data.frame(
-      condition = cgrc_normalise_arm(d[[input$col_cond]], "treatment received"),
-      guess     = cgrc_normalise_arm(d[[input$col_guess]], "treatment guessed"),
-      value     = as.numeric(d[[input$col_value]]))
-    trial <- trial[stats::complete.cases(trial), ]
     dir <- as.numeric(input$direction)
-    grid <- sort(unique(c(seq(0, 1, length.out = 101), cgr_observed(cgr_strata(trial)))))
-    list(trial = trial,
-         fit = cgrc(trial, n_draws = 8000, direction = dir),
-         # the two interpretable probabilities, before/after the blinding
-         # correction, at the same ROPE width delta the user chose
-         head = cgrc_headline(trial, direction = dir, delta_sd_frac = input$rope,
-                              n_draws = 8000),
-         rope = cgr_rope(trial, grid = grid, n_draws = 8000,
-                         delta_sd_frac = input$rope, direction = dir),
-         sens = cgr_rope_sensitivity(trial, at_cgr = 0.5, n_draws = 6000,
-                                     direction = dir),
-         dir = dir)
+    seed <- if (is.null(input$seed_b) || !is.finite(input$seed_b)) NULL else as.integer(input$seed_b)
+    ulevel <- input$unknown_level
+
+    # 1. Audit every row instead of silently dropping with complete.cases().
+    aud <- cgrc_input_audit(d[[input$col_cond]], d[[input$col_guess]],
+                            d[[input$col_value]], unknown_level = ulevel)
+    clean <- aud$clean
+
+    # 2. Decide the mode. Preserve UNKNOWN by default when present.
+    present <- aud$has_unknown
+    mode <- if (!present) "binary"
+            else if (identical(input$unknown_mode, "completecase")) "binary"
+            else "unknown"
+
+    # In binary complete-case with UNKNOWN present, drop the UNKNOWN rows here and
+    # count them, so the exclusion is explicit rather than silent.
+    n_excl_unknown <- 0L
+    if (mode == "binary" && present) {
+      is_unk <- clean$guess == "UNKNOWN"
+      n_excl_unknown <- sum(is_unk)
+      clean <- clean[!is_unk, , drop = FALSE]
+    }
+    sdy <- if (nrow(clean)) stats::sd(clean$value) else NA_real_
+    delta <- delta_units(sdy)
+
+    base <- list(mode = mode, trial = clean, dir = dir, audit = aud,
+                 delta = delta, seed = seed, n_excl_unknown = n_excl_unknown)
+
+    if (mode == "unknown") {
+      cur_cgr <- NULL
+      ufit  <- cgrc_unknown(clean, unknown_level = ulevel, n_draws = 8000,
+                            direction = dir, seed = seed)
+      grid  <- sort(unique(c(seq(0, 1, length.out = 101),
+                             ufit$observed_directional_cgr, 0.5)))
+      c(base, list(
+        ufit  = ufit,
+        uhead = cgrc_unknown_headline(clean, unknown_level = ulevel, direction = dir,
+                                      delta = delta, n_draws = 8000, seed = seed),
+        urope = cgr_unknown_rope(clean, grid = grid, n_draws = 8000,
+                                 delta = delta, direction = dir),
+        usens = cgr_unknown_rope_sensitivity(clean, at_cgr = 0.5, n_draws = 6000,
+                                             direction = dir)))
+    } else {
+      grid <- sort(unique(c(seq(0, 1, length.out = 101),
+                            cgr_observed(cgr_strata(clean)))))
+      c(base, list(
+        fit  = cgrc(clean, n_draws = 8000, direction = dir, seed = seed),
+        head = cgrc_headline(clean, direction = dir, delta = delta,
+                             n_draws = 8000, seed = seed),
+        rope = cgr_rope(clean, grid = grid, n_draws = 8000, delta = delta,
+                        direction = dir),
+        sens = cgr_rope_sensitivity(clean, at_cgr = 0.5, n_draws = 6000,
+                                    direction = dir)))
+    }
   })
 
   output$bpanel <- renderUI({
@@ -332,9 +413,11 @@ server <- function(input, output, session) {
       "an outcome value, map them on the left, then click Analyse."))
     tagList(
       uiOutput("b_error"),
+      uiOutput("b_audit"),
       uiOutput("b_headline"),
       fluidRow(column(5, h4("Strata (from your data)"), tableOutput("b_strata")),
                column(7, h4("Adjusted vs unadjusted"), tableOutput("b_summary"))),
+      uiOutput("b_counts"),
       uiOutput("b_identity"),
       h4("CGR curve"), plotOutput("b_curve", height = "420px"),
       h4("Region of practical equivalence"),
@@ -350,99 +433,224 @@ server <- function(input, output, session) {
     if (inherits(f, "cgrc_err")) div(class = "verdict warn", paste("Could not analyse:", f))
   })
 
-  # The headline: two plain probabilities, before and after the blinding
-  # correction. This is the interpretable answer - "is there an effect" and
-  # "is it big enough to matter" - that a single p-value cannot give.
+  # Missing-data audit: what was excluded and why, and the exact analysis n. No
+  # row is dropped silently; the cleaned data and the exclusion log are
+  # downloadable from the sidebar.
+  output$b_audit <- renderUI({
+    f <- safe_fit(); if (inherits(f, "cgrc_err")) return(NULL)
+    s <- f$audit$summary
+    modetxt <- if (f$mode == "unknown")
+      "UNKNOWN responses are <b>preserved</b> as a third response category."
+    else if (f$n_excl_unknown > 0)
+      sprintf(paste0("Binary <b>complete-case</b> analysis: %d UNKNOWN response(s) ",
+                     "(%.1f%%) were <b>excluded</b> (they were observed, not missing)."),
+              f$n_excl_unknown, 100 * f$n_excl_unknown / s[["n_input"]])
+    else "No UNKNOWN responses were present; standard binary CGRC."
+    div(class = "verdict feas", HTML(sprintf(
+      "<b>Input audit.</b> %d rows uploaded → <b>%d analysed</b>. %s
+       <div class='muted' style='margin-top:6px;'>Excluded — missing condition: %d;
+       missing guess: %d; missing outcome: %d; non-numeric outcome: %d.
+       Observed UNKNOWN responses: %d.</div>",
+      s[["n_input"]], nrow(f$trial), modetxt,
+      s[["missing_condition"]], s[["missing_guess"]], s[["missing_outcome"]],
+      s[["nonnumeric_outcome"]], s[["observed_unknown"]])))
+  })
+
+  # Downloads: cleaned analysis data and the exclusion log.
+  output$download_ui <- renderUI({
+    f <- safe_fit(); if (inherits(f, "cgrc_err")) return(NULL)
+    tagList(tags$hr(),
+      downloadButton("dl_clean", "Cleaned analysis data (CSV)", class = "btn-sm"),
+      downloadButton("dl_log",   "Exclusion log (CSV)",        class = "btn-sm"),
+      downloadButton("dl_report","Analysis report (Markdown)", class = "btn-sm"))
+  })
+  output$dl_clean <- downloadHandler(
+    filename = function() "cgrc_analysis_data.csv",
+    content = function(file) {
+      f <- safe_fit(); if (inherits(f, "cgrc_err")) return()
+      utils::write.csv(f$trial, file, row.names = FALSE)
+    })
+  output$dl_log <- downloadHandler(
+    filename = function() "cgrc_exclusion_log.csv",
+    content = function(file) {
+      f <- safe_fit(); if (inherits(f, "cgrc_err")) return()
+      utils::write.csv(f$audit$log, file, row.names = FALSE)
+    })
+  output$dl_report <- downloadHandler(
+    filename = function() "cgrc_report.md",
+    content = function(file) {
+      f <- safe_fit(); if (inherits(f, "cgrc_err")) return()
+      writeLines(cgrc_build_report(f), file)
+    })
+
+  # The headline: two plain probabilities, before and after reweighting the guess
+  # rate to 0.50. This is the interpretable answer - "is there an effect" and "is
+  # it big enough to matter" - that a single p-value cannot give.
   output$b_headline <- renderUI({
     f <- safe_fit(); if (inherits(f, "cgrc_err")) return(NULL)
-    h <- f$head; pct <- function(p) sprintf("%.0f%%", 100 * p)
+    pct <- function(p) sprintf("%.0f%%", 100 * p)
+    if (f$mode == "unknown") {
+      h <- f$uhead
+      rhead <- "at directional CGR 0.50<br><span class='muted'>(UNKNOWN rate held fixed)</span>"
+      title <- "Your trial, in two probabilities (UNKNOWN preserved)."
+      note  <- h$text
+    } else {
+      h <- f$head
+      rhead <- "at guessing-at-chance (CGR 0.50)"
+      title <- "Your trial, in two probabilities."
+      note  <- h$text
+    }
     div(class = "verdict",
       HTML(sprintf(
-        "<b>Your trial, in two probabilities.</b><br>
+        "<b>%s</b><br>
          <table style='width:100%%;margin-top:6px;border-collapse:collapse;'>
          <tr style='color:#666;'><td></td><td><b>at your CGR (raw)</b></td>
-             <td><b>at perfect blinding</b></td></tr>
+             <td><b>%s</b></td></tr>
          <tr><td>probability of a favourable effect</td>
              <td><b>%s</b></td><td><b>%s</b></td></tr>
          <tr><td>probability it is meaningful (beyond %.2g pts)</td>
              <td><b>%s</b></td><td><b>%s</b></td></tr></table>
          <div class='muted' style='margin-top:8px;'>%s</div>",
+        title, rhead,
         pct(h$p_dir_obs), pct(h$p_dir_blind),
         h$delta, pct(h$p_meaningful_obs), pct(h$p_meaningful_blind),
-        paste(h$text,
-              "These are continuous probabilities — deliberately no",
+        paste(note, "These are continuous probabilities — deliberately no",
               "significant/not cut-off."))))
   })
 
   output$b_strata <- renderTable({
     f <- safe_fit(); if (inherits(f, "cgrc_err")) return(NULL)
-    st <- cgr_strata(f$trial)
-    data.frame(stratum = STRATA, n = lengths(st)[STRATA],
-               mean = round(vapply(st[STRATA], mean, numeric(1)), 2),
-               row.names = NULL)
+    if (f$mode == "unknown") {
+      st <- cgr_unknown_strata(f$trial)
+      lab <- c(ACAC = "received active / guessed active",
+               ACPL = "received active / guessed placebo",
+               ACU  = "received active / UNKNOWN",
+               PLAC = "received placebo / guessed active",
+               PLPL = "received placebo / guessed placebo",
+               PLU  = "received placebo / UNKNOWN")
+      data.frame(stratum = lab[UNKNOWN_STRATA], n = lengths(st)[UNKNOWN_STRATA],
+                 mean = round(vapply(UNKNOWN_STRATA, function(k)
+                   if (length(st[[k]])) mean(st[[k]]) else NA_real_, numeric(1)), 2),
+                 row.names = NULL)
+    } else {
+      st <- cgr_strata(f$trial)
+      data.frame(stratum = STRATA, n = lengths(st)[STRATA],
+                 mean = round(vapply(st[STRATA], mean, numeric(1)), 2),
+                 row.names = NULL)
+    }
   })
 
   output$b_summary <- renderTable({
     f <- safe_fit(); if (inherits(f, "cgrc_err")) return(NULL)
-    s <- f$fit$summary
+    s <- if (f$mode == "unknown") f$ufit$summary else f$fit$summary
     ok <- cgrc_pct_ok(s$post_mean[1], s$cri_lo[1], s$cri_hi[1], s$post_mean[2])
     s$pct_attenuation[2] <- if (ok) s$pct_attenuation[2] else NA
-    s[, c("what","post_mean","cri_lo","cri_hi","p_favourable","pct_attenuation")]
+    keep <- intersect(c("what","directional_cgr","unknown_rate","post_mean",
+                        "cri_lo","cri_hi","p_favourable","pct_attenuation"), names(s))
+    s[, keep]
   }, digits = 3)
+
+  # For UNKNOWN mode, the extra design counts the brief asks to show prominently.
+  output$b_counts <- renderUI({
+    f <- safe_fit(); if (inherits(f, "cgrc_err") || f$mode != "unknown") return(NULL)
+    st <- cgr_unknown_strata(f$trial); n <- lengths(st)
+    minstr <- min(n[n > 0])
+    warn <- minstr < THIN_STRATUM
+    div(class = if (warn) "verdict warn feas" else "verdict feas", HTML(sprintf(
+      "<b>UNKNOWN-preserving design.</b> n total <b>%d</b>; directional <b>%d</b>;
+       UNKNOWN <b>%d</b> (<b>%.1f%%</b>). Directional CGR <b>%.3f</b>.
+       Active-arm guesses AC/PL/U: %d/%d/%d. Placebo-arm guesses AC/PL/U: %d/%d/%d.
+       Smallest occupied stratum: <b>%d</b>%s.",
+      f$ufit$n_total, f$ufit$n_directional, f$ufit$n_unknown,
+      100 * f$ufit$observed_unknown_rate, f$ufit$observed_directional_cgr,
+      n[["ACAC"]], n[["ACPL"]], n[["ACU"]], n[["PLAC"]], n[["PLPL"]], n[["PLU"]],
+      minstr, if (warn) " (thin — the reweighted estimate is fragile)" else "")))
+  })
 
   output$b_identity <- renderUI({
     f <- safe_fit(); if (inherits(f, "cgrc_err")) return(NULL)
-    z <- cgr_reference_line_test(f$trial, orig_cgr = f$fit$observed_cgr)
-    div(class = "verdict feas", HTML(sprintf(
-      "<b>Identity check.</b> Observed CGR = %.4f. The curve at the observed CGR
-       equals the raw arm-mean difference to %.1e — the no-op identity holds, so
-       the reference line is in the right place.",
-      f$fit$observed_cgr, abs(z$D_at_obs - z$raw_mean_diff))))
+    if (f$mode == "unknown") {
+      z <- cgr_unknown_reference_line_test(f$trial)
+      div(class = "verdict feas", HTML(sprintf(
+        "<b>Identity check.</b> At the observed directional CGR (%.4f) and observed
+         UNKNOWN rate (%.1f%%), the reweighted curve equals the raw arm-mean
+         difference to %.1e — the no-op identity holds.",
+        z$computed_obs_directional_cgr, 100 * z$observed_unknown_rate,
+        abs(z$D_at_obs - z$raw_mean_diff))))
+    } else {
+      z <- cgr_reference_line_test(f$trial, orig_cgr = f$fit$observed_cgr)
+      div(class = "verdict feas", HTML(sprintf(
+        "<b>Identity check.</b> Observed CGR = %.4f. The curve at the observed CGR
+         equals the raw arm-mean difference to %.1e — the no-op identity holds, so
+         the reference line is in the right place.",
+        f$fit$observed_cgr, abs(z$D_at_obs - z$raw_mean_diff))))
+    }
   })
 
   output$b_curve <- renderPlot({
     f <- safe_fit(); if (inherits(f, "cgrc_err")) return(NULL)
     lab <- if (f$dir < 0) "favourable" else "positive"
-    cgr_plot(f$fit$curve, obs_cgr = f$fit$observed_cgr, direction_label = lab)
+    if (f$mode == "unknown")
+      cgr_unknown_plot(f$ufit$curve, obs_cgr = f$ufit$observed_directional_cgr,
+                       u = f$ufit$target_unknown_rate, direction_label = lab)
+    else
+      cgr_plot(f$fit$curve, obs_cgr = f$fit$observed_cgr, direction_label = lab)
   })
 
   output$b_rope <- renderPlot({
     f <- safe_fit(); if (inherits(f, "cgrc_err")) return(NULL)
-    z <- f$rope
+    if (f$mode == "unknown") {
+      z <- f$urope; obs_cgr <- f$ufit$observed_directional_cgr
+      xlab <- "directional correct-guess rate"
+      sub  <- sprintf("black = directional 0.50; green = observed directional CGR (UNKNOWN held at %.1f%%)",
+                      100 * f$ufit$target_unknown_rate)
+    } else {
+      z <- f$rope; obs_cgr <- f$fit$observed_cgr
+      xlab <- "correct guess rate"
+      sub  <- "black = guessing at chance (0.50); green = your observed CGR"
+    }
     stack <- do.call(rbind, lapply(c("p_benefit","p_negligible","p_harm"), function(k)
       data.frame(cgr = z$cgr, p = z[[k]], region = k)))
     stack$region <- factor(stack$region, c("p_benefit","p_negligible","p_harm"),
       labels = c("meaningful benefit","practically negligible","meaningful harm"))
     ggplot(stack, aes(cgr, p, fill = region)) + geom_area() +
       geom_vline(xintercept = 0.5, linetype = "dashed") +
-      geom_vline(xintercept = f$fit$observed_cgr, linetype = "dashed", colour = "darkgreen") +
+      geom_vline(xintercept = obs_cgr, linetype = "dashed", colour = "darkgreen") +
       scale_fill_manual(values = c("meaningful benefit" = "#2471A3",
         "practically negligible" = "grey75", "meaningful harm" = "#C0392B")) +
       scale_y_continuous(expand = c(0,0)) +
-      labs(x = "correct guess rate", y = "posterior probability", fill = NULL,
-           subtitle = "black = perfect blinding; green = your observed CGR") +
+      labs(x = xlab, y = "posterior probability", fill = NULL, subtitle = sub) +
       theme_minimal(base_size = 15) + theme(legend.position = "bottom")
   })
 
   output$b_sens <- renderTable({
     f <- safe_fit(); if (inherits(f, "cgrc_err")) return(NULL)
-    data.frame(`delta (SD frac)` = f$sens$delta_in_SD,
-               `delta (points)` = round(f$sens$delta, 2),
-               `P negligible` = round(f$sens$p_negligible, 3),
-               `P benefit` = round(f$sens$p_benefit, 3), check.names = FALSE)
+    z <- if (f$mode == "unknown") f$usens else f$sens
+    data.frame(`delta (SD frac)` = z$delta_in_SD,
+               `delta (points)` = round(z$delta, 2),
+               `P negligible` = round(z$p_negligible, 3),
+               `P benefit` = round(z$p_benefit, 3), check.names = FALSE)
   }, digits = 3)
 
   output$to_design <- renderUI({
     f <- safe_fit(); if (inherits(f, "cgrc_err")) return(NULL)
+    if (f$mode == "unknown") {
+      # The design lookup models BINARY guessing only; it has no UNKNOWN
+      # responses, so the bridge is disabled for an UNKNOWN-preserving analysis.
+      return(tagList(tags$hr(), div(class = "muted",
+        "The design check (Panel A) models binary guessing only — it has not",
+        "simulated UNKNOWN responses — so it is disabled for this",
+        "UNKNOWN-preserving analysis. Re-run in binary complete-case mode to use it.")))
+    }
     tagList(tags$hr(), actionButton("do_bridge",
       sprintf("Run the design check at this trial (n=%d, CGR=%.2f)",
               nrow(f$trial), f$fit$observed_cgr), class = "btn-sm"))
   })
 
   ## Bridge: send the uploaded trial's n and observed CGR to Panel A - the exact
-  ## workflow the paper's limitations paragraph describes.
+  ## workflow the paper's limitations paragraph describes. Binary mode only.
   observeEvent(input$do_bridge, {
-    f <- safe_fit(); if (inherits(f, "cgrc_err")) return()
+    f <- safe_fit(); if (inherits(f, "cgrc_err") || f$mode != "binary") return()
     updateSliderInput(session, "n", value = round(nrow(f$trial) / 10) * 10)
     updateSliderInput(session, "pcg", value = round(f$fit$observed_cgr, 2))
     updateNavbarPage(session, "navbar", selected = "Design")

@@ -290,7 +290,9 @@ cgr_unknown_rope_sensitivity <- function(df, at_cgr = 0.5, u_target = NULL,
 # "cgrc_unknown" object (NOT inheriting "cgrc": the binary plot/print methods
 # would mislabel the directional x-axis).
 cgrc_unknown <- function(df, unknown_level = "UNKNOWN", unknown_rate = NULL,
-                         n_draws = 20000, direction = 1, prior = list()) {
+                         n_draws = 20000, direction = 1, prior = list(),
+                         seed = NULL) {
+  if (!is.null(seed)) set.seed(seed)
   if (!is.null(unknown_rate) && (unknown_rate < 0 || unknown_rate >= 1))
     stop("unknown_rate must be NULL or in [0, 1).", call. = FALSE)
   trial <- data.frame(
@@ -316,7 +318,7 @@ cgrc_unknown <- function(df, unknown_level = "UNKNOWN", unknown_rate = NULL,
     target_unknown_rate = u,
     counts = o$counts,
     n_total = o$n_total, n_directional = o$n_directional, n_unknown = o$n_unknown,
-    direction = direction,
+    direction = direction, seed = seed,
     method = "UNKNOWN-preserving CGRC extension"),
     class = "cgrc_unknown")
 }
@@ -341,7 +343,8 @@ plot.cgrc_unknown <- function(x, ...) {
 # not the original Szigeti estimand, using reweighting rather than causal wording.
 cgrc_unknown_headline <- function(df, unknown_level = "UNKNOWN", unknown_rate = NULL,
                                   direction = 1, delta = NULL, delta_sd_frac = 0.5,
-                                  n_draws = 20000, prior = list()) {
+                                  n_draws = 20000, prior = list(), seed = NULL) {
+  if (!is.null(seed)) set.seed(seed)
   trial <- data.frame(
     condition = cgrc_normalise_arm(df$condition, "treatment received"),
     guess     = cgrc_normalise_guess(df$guess, allow_unknown = TRUE,
@@ -364,7 +367,7 @@ cgrc_unknown_headline <- function(df, unknown_level = "UNKNOWN", unknown_rate = 
   q <- function(x, p) unname(stats::quantile(x, p))
   res <- list(
     observed_directional_cgr = o$c_obs, observed_unknown_rate = o$u_obs,
-    target_unknown_rate = u, delta = delta, direction = direction,
+    target_unknown_rate = u, delta = delta, direction = direction, seed = seed,
     n_total = o$n_total, n_directional = o$n_directional, n_unknown = o$n_unknown,
     counts = o$counts,
     adj_est = mean(d_bl), adj_lo = q(d_bl, 0.025), adj_hi = q(d_bl, 0.975),

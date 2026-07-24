@@ -145,6 +145,157 @@ cgrc_normalise_guess <- function(x, allow_unknown = FALSE, unknown_labels = NULL
   out
 }
 
+# Input audit for an uploaded trial. Classifies every row instead of silently
+# dropping it with complete.cases(): a row can be missing its condition, missing
+# its guess, an observed UNKNOWN response (NOT an exclusion - kept when preserving
+# UNKNOWN), missing its outcome, or a non-numeric outcome. A genuinely
+# unmappable code (e.g. "banana") still errors via the normalisers - that is a
+# data error, not a missing value. Returns the clean analysis frame, an exclusion
+# log, a count summary, and whether any UNKNOWN responses were seen. Blank/NA are
+# missing; an observed UNKNOWN is not.
+cgrc_input_audit <- function(condition, guess, value, unknown_level = "UNKNOWN") {
+  n  <- length(condition)
+  cr <- trimws(as.character(condition)); gr <- trimws(as.character(guess))
+  vr <- as.character(value)
+  miss_c <- is.na(condition) | cr == ""
+  miss_g <- is.na(guess)     | gr == ""
+  miss_v <- is.na(value)     | trimws(vr) == ""
+  vnum   <- suppressWarnings(as.numeric(vr))
+  nonnum <- !miss_v & is.na(vnum)
+
+  cond <- rep(NA_character_, n); g <- rep(NA_character_, n)
+  if (any(!miss_c))
+    cond[!miss_c] <- cgrc_normalise_arm(condition[!miss_c], "treatment received")
+  if (any(!miss_g))
+    g[!miss_g] <- cgrc_normalise_guess(guess[!miss_g], allow_unknown = TRUE,
+                                       unknown_labels = unknown_level)
+  is_unknown <- !miss_g & !is.na(g) & g == "UNKNOWN"
+
+  # exclusion reason, by precedence (a missing condition wins over a bad outcome)
+  reason <- rep("ok", n)
+  reason[nonnum] <- "non-numeric outcome"
+  reason[miss_v] <- "missing outcome"
+  reason[miss_g] <- "missing guess"
+  reason[miss_c] <- "missing condition"
+  excluded <- reason != "ok"
+
+  summary <- c(n_input = n,
+               missing_condition  = sum(miss_c),
+               missing_guess      = sum(miss_g),
+               observed_unknown   = sum(is_unknown),
+               missing_outcome    = sum(miss_v),
+               nonnumeric_outcome = sum(nonnum),
+               excluded           = sum(excluded),
+               n_analysis         = sum(!excluded))
+  list(
+    clean = data.frame(condition = cond[!excluded], guess = g[!excluded],
+                       value = vnum[!excluded], stringsAsFactors = FALSE),
+    log = data.frame(row = which(excluded), reason = reason[excluded],
+                     stringsAsFactors = FALSE),
+    summary = summary,
+    has_unknown = sum(is_unknown) > 0)
+}
+
+# Build a self-contained Markdown analysis report from the app's assembled
+# analysis object `f` (see inst/app/app.R). Contains the input audit, exclusions,
+# stratum counts, observed CGR and UNKNOWN rate, raw and adjusted estimates, the
+# identity check, posterior probabilities, ROPE results, warnings, the package
+# version, the random seed, and an exact method description. Returns a character
+# vector of lines. Kept in the package (not app.R) so it is testable and so the
+# app carries no statistics of its own.
+cgrc_build_report <- function(f) {
+  ver <- tryCatch(as.character(utils::packageVersion("cgrc.bayes")), error = function(e) "NA")
+  s <- f$audit$summary
+  L <- c()
+  add <- function(...) L <<- c(L, sprintf(...))
+  add("# CGRC analysis report")
+  add("")
+  add("- Generated: %s", format(Sys.time(), "%Y-%m-%d %H:%M:%S"))
+  add("- Package: cgrc.bayes %s", ver)
+  add("- Random seed: %s", if (is.null(f$seed)) "not set" else as.character(f$seed))
+  meth <- if (f$mode == "unknown")
+    paste("UNKNOWN-preserving CGRC extension (six strata; observed UNKNOWN rate",
+          "held fixed while the directional correct-guess rate is varied). This",
+          "is an extension implemented by cgrc.bayes, not the original Szigeti",
+          "estimand.")
+  else "Binary four-stratum CGRC (Normal-Inverse-Gamma conjugate posterior)."
+  add("- Method: %s", meth)
+  add("")
+  add("## Input audit")
+  add("")
+  add("| Quantity | n |")
+  add("|---|---|")
+  add("| Rows uploaded | %d |", s[["n_input"]])
+  add("| Analysed | %d |", nrow(f$trial))
+  add("| Missing condition | %d |", s[["missing_condition"]])
+  add("| Missing guess | %d |", s[["missing_guess"]])
+  add("| Missing outcome | %d |", s[["missing_outcome"]])
+  add("| Non-numeric outcome | %d |", s[["nonnumeric_outcome"]])
+  add("| Observed UNKNOWN responses | %d |", s[["observed_unknown"]])
+  if (isTRUE(f$n_excl_unknown > 0))
+    add("| UNKNOWN excluded (complete-case) | %d |", f$n_excl_unknown)
+  add("")
+
+  if (f$mode == "unknown") {
+    st <- cgr_unknown_strata(f$trial); n <- lengths(st)
+    add("## Stratum counts (UNKNOWN preserved)")
+    add("")
+    add("| Stratum | n |")
+    add("|---|---|")
+    for (k in UNKNOWN_STRATA) add("| %s | %d |", k, n[[k]])
+    add("")
+    add("- Observed directional CGR: %.4f", f$ufit$observed_directional_cgr)
+    add("- Observed UNKNOWN rate: %.4f (held fixed at %.4f)",
+        f$ufit$observed_unknown_rate, f$ufit$target_unknown_rate)
+    add("- n total / directional / UNKNOWN: %d / %d / %d",
+        f$ufit$n_total, f$ufit$n_directional, f$ufit$n_unknown)
+    sm <- f$ufit$summary; z <- cgr_unknown_reference_line_test(f$trial)
+    h <- f$uhead
+    obs_est <- sm$post_mean[1]; adj_est <- sm$post_mean[2]
+  } else {
+    st <- cgr_strata(f$trial)
+    add("## Stratum counts")
+    add("")
+    add("| Stratum | n |")
+    add("|---|---|")
+    for (k in STRATA) add("| %s | %d |", k, length(st[[k]]))
+    add("")
+    add("- Observed CGR: %.4f", f$fit$observed_cgr)
+    sm <- f$fit$summary; z <- cgr_reference_line_test(f$trial, f$fit$observed_cgr)
+    h <- f$head
+    obs_est <- sm$post_mean[1]; adj_est <- sm$post_mean[2]
+  }
+  add("")
+  add("## Estimates")
+  add("")
+  add("| | posterior mean | 95%% CrI | P(favourable) |")
+  add("|---|---|---|---|")
+  add("| Raw (observed CGR) | %.3f | %.3f to %.3f | %.3f |",
+      sm$post_mean[1], sm$cri_lo[1], sm$cri_hi[1], sm$p_favourable[1])
+  add("| Adjusted (CGR 0.50) | %.3f | %.3f to %.3f | %.3f |",
+      sm$post_mean[2], sm$cri_lo[2], sm$cri_hi[2], sm$p_favourable[2])
+  add("")
+  add("- Meaningful-difference threshold delta: %.3f outcome units", f$delta)
+  add("- P(meaningful) raw / adjusted: %.3f / %.3f",
+      h$p_meaningful_obs, h$p_meaningful_blind)
+  add("")
+  add("## Identity check")
+  add("")
+  add("At the observed CGR the reweighting is a no-op: Delta = raw arm-mean")
+  add("difference to %.1e (should be ~0).", abs(z$D_at_obs - z$raw_mean_diff))
+  add("")
+  add("## Region of practical equivalence (at CGR 0.50)")
+  add("")
+  rope <- if (f$mode == "unknown") f$urope else f$rope
+  i <- which.min(abs(rope$cgr - 0.5))
+  add("- P(meaningful benefit): %.3f", rope$p_benefit[i])
+  add("- P(practically negligible): %.3f", rope$p_negligible[i])
+  add("- P(meaningful harm): %.3f", rope$p_harm[i])
+  add("")
+  add("_Report text: %s_", h$text)
+  L
+}
+
 # Should pct_attenuation be shown? No when the unadjusted estimate is not
 # distinguishable from zero (its CrI includes 0) or when adjusted and unadjusted
 # have opposite signs (the ratio is then > 100% and meaningless, e.g. "146.9%").

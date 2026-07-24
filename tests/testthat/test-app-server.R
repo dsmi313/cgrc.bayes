@@ -87,6 +87,92 @@ test_that("Panel B fails gracefully when an uploaded trial has an empty stratum"
   })
 })
 
+# ---- UNKNOWN-preserving extension in the app --------------------------------
+
+# a CSV with all six strata, two genuinely-missing rows, and mixed UNKNOWN tokens
+unknown_csv <- function() {
+  set.seed(42)
+  mk <- function(cond, g, k) data.frame(
+    condition = cond, guess = g,
+    value = rnorm(k, 10 + (cond == "active") * 2, 3), stringsAsFactors = FALSE)
+  d <- rbind(
+    mk("active",  "active",  26), mk("active",  "placebo", 6),
+    mk("active",  "unsure",  12), mk("placebo", "active",  8),
+    mk("placebo", "placebo", 22), mk("placebo", "I don't know", 14),
+    data.frame(condition = c("active", ""), guess = c("", "placebo"),
+               value = c(5, 6), stringsAsFactors = FALSE))          # 2 missing rows
+  d <- d[sample(nrow(d)), ]
+  f <- tempfile(fileext = ".csv"); write.csv(d, f, row.names = FALSE); f
+}
+
+test_that("Panel B preserves UNKNOWN by default, shows six strata, drops nothing silently", {
+  skip_if_not(requireNamespace("shiny", quietly = TRUE), "shiny not installed")
+  app_dir <- system.file("app", package = "cgrc.bayes"); skip_if(app_dir == "", "app not installed")
+  f <- unknown_csv()
+  shiny::testServer(app_dir, {
+    session$setInputs(csv = list(datapath = f, name = "u.csv"))
+    session$setInputs(col_cond = "condition", col_guess = "guess", col_value = "value",
+                      direction = "1", threshold_mode = "sd", rope = 0.1,
+                      seed_b = 1, unknown_level = "UNKNOWN", analyse = 1)
+    expect_true(unknown_present())                    # detected
+    ff <- safe_fit()
+    expect_false(inherits(ff, "cgrc_err"))
+    expect_identical(ff$mode, "unknown")              # preserve is the default
+    expect_s3_class(ff$ufit, "cgrc_unknown")
+    st <- cgr_unknown_strata(ff$trial)
+    expect_equal(length(st), 6L)                      # six strata
+    expect_true(all(lengths(st)[UNKNOWN_STRATA] > 0)) # all populated
+    expect_equal(ff$ufit$n_unknown, 26L)              # 12 + 14 UNKNOWN retained
+    # the two missing rows were excluded; the UNKNOWN rows were NOT
+    expect_equal(unname(ff$audit$summary[["missing_condition"]]), 1L)
+    expect_equal(unname(ff$audit$summary[["missing_guess"]]), 1L)
+    expect_equal(unname(ff$audit$summary[["observed_unknown"]]), 26L)
+    expect_equal(nrow(ff$trial), 88L)                 # 90 - 2 missing
+    # identity holds on the preserved analysis
+    z <- cgr_unknown_reference_line_test(ff$trial)
+    expect_lt(abs(z$D_at_obs - z$raw_mean_diff), 1e-9)
+    # a Markdown report is produced
+    rep <- cgrc_build_report(ff)
+    expect_true(any(grepl("UNKNOWN-preserving", rep)))
+    expect_true(any(grepl("Identity check", rep)))
+  })
+})
+
+test_that("Panel B complete-case mode excludes UNKNOWN and reports the count", {
+  skip_if_not(requireNamespace("shiny", quietly = TRUE), "shiny not installed")
+  app_dir <- system.file("app", package = "cgrc.bayes"); skip_if(app_dir == "", "app not installed")
+  f <- unknown_csv()
+  shiny::testServer(app_dir, {
+    session$setInputs(csv = list(datapath = f, name = "u.csv"),
+                      col_cond = "condition", col_guess = "guess", col_value = "value",
+                      direction = "1", threshold_mode = "sd", rope = 0.1, seed_b = 1,
+                      unknown_level = "UNKNOWN", unknown_mode = "completecase", analyse = 1)
+    ff <- safe_fit()
+    expect_false(inherits(ff, "cgrc_err"))
+    expect_identical(ff$mode, "binary")
+    expect_equal(ff$n_excl_unknown, 26L)              # UNKNOWN explicitly excluded
+    expect_true(all(ff$trial$guess %in% c("AC", "PL")))
+    expect_equal(nrow(ff$trial), 62L)                 # 88 analysable - 26 UNKNOWN
+  })
+})
+
+test_that("Panel B does not offer the binary design bridge for an UNKNOWN analysis", {
+  skip_if_not(requireNamespace("shiny", quietly = TRUE), "shiny not installed")
+  app_dir <- system.file("app", package = "cgrc.bayes"); skip_if(app_dir == "", "app not installed")
+  f <- unknown_csv()
+  shiny::testServer(app_dir, {
+    session$setInputs(csv = list(datapath = f, name = "u.csv"),
+                      col_cond = "condition", col_guess = "guess", col_value = "value",
+                      direction = "1", rope = 0.1, seed_b = 1, unknown_level = "UNKNOWN",
+                      analyse = 1)
+    session$setInputs(n = 200, pcg = 0.6)
+    session$setInputs(do_bridge = 1)                  # must be a no-op in UNKNOWN mode
+    expect_identical(safe_fit()$mode, "unknown")
+    expect_equal(input$n, 200)                        # design sliders unchanged
+    expect_equal(input$pcg, 0.6)
+  })
+})
+
 test_that("Panel B errors clearly on an unmappable coding", {
   skip_if_not(requireNamespace("shiny", quietly = TRUE), "shiny not installed")
   app_dir <- system.file("app", package = "cgrc.bayes")
