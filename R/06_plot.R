@@ -7,8 +7,8 @@ cgr_plot <- function(cur, obs_cgr, title = NULL,
   if (!requireNamespace("ggplot2", quietly = TRUE)) {
     stop("needs ggplot2", call. = FALSE)
   }
-  lev <- c("Treatment effect (posterior mean, 95% CrI)",
-           sprintf("Posterior probability the effect is %s", direction_label))
+  lev <- c("Treatment effect\n(95% CrI)",
+           sprintf("P(effect %s)", direction_label))
 
   eff <- data.frame(cgr = cur$cgr, method = cur$method, est = cur$est,
                     lo = cur$lo, hi = cur$hi, quantity = lev[1],

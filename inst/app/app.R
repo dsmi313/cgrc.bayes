@@ -402,7 +402,7 @@ server <- function(input, output, session) {
 
   output$b_curve <- renderPlot({
     f <- safe_fit(); if (inherits(f, "cgrc_err")) return(NULL)
-    lab <- if (f$dir < 0) "favourable (lower is better)" else "positive"
+    lab <- if (f$dir < 0) "favourable" else "positive"
     cgr_plot(f$fit$curve, obs_cgr = f$fit$observed_cgr, direction_label = lab)
   })
 
