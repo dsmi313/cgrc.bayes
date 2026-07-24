@@ -88,6 +88,81 @@ cgrc_power_curve <- function(lut, p_cg, true_effect) {
                numeric(1)))
 }
 
+# Accessor for the precomputed UNKNOWN-preserving operating-characteristics
+# lookup (inst/extdata/cgrc_unknown_lookup.rds, built by
+# data-raw/build_unknown_lookup.R). Returns NULL if it has not been built, so the
+# app can fall back gracefully rather than error.
+cgrc_unknown_lookup <- function() {
+  f <- system.file("extdata", "cgrc_unknown_lookup.rds", package = "cgrc.bayes")
+  if (!nzchar(f) || !file.exists(f)) return(NULL)
+  readRDS(f)
+}
+
+# Operating characteristics of the UNKNOWN estimator for one (DTE, AEB) scenario
+# at arbitrary (n, p_cg), read from the UNKNOWN lookup. Mirrors cgrc_op_at():
+# bilinear in (n, p_cg); true_effect and u are snapped to their nearest grid
+# levels. Returns a one-row data.frame plus interpolated/clamped flags.
+cgrc_unknown_op_at <- function(lut, n, p_cg, true_effect, u, dte, aeb) {
+  sub <- lut[lut$DTE == dte & lut$AEB == aeb, ]
+  us  <- sort(unique(sub$u)); uu <- us[which.min(abs(us - u))]
+  sub <- sub[sub$u == uu, ]
+  effs <- sort(unique(sub$true_effect)); eff <- effs[which.min(abs(effs - true_effect))]
+  sub  <- sub[sub$true_effect == eff, ]
+  if (!nrow(sub)) stop("no UNKNOWN-lookup rows for that scenario", call. = FALSE)
+  metrics <- c("unadj_bias", "adj_bias", "adj_rmse", "coverage95",
+               "p_fav_gt_95", "p_fav_gt_975", "freq_sig", "empty_stratum_rate")
+  metrics <- metrics[metrics %in% names(sub)]
+  vals <- vapply(metrics, function(m) .cgrc_bilin(sub, "n", "p_cg", m, n, p_cg),
+                 numeric(1))
+  on_grid <- n %in% sub$n && p_cg %in% sub$p_cg
+  clamped <- n < min(sub$n) || n > max(sub$n) ||
+             p_cg < min(sub$p_cg) || p_cg > max(sub$p_cg)
+  cbind(data.frame(n = n, p_cg = p_cg, true_effect = eff, u = uu,
+                   DTE = dte, AEB = aeb,
+                   interpolated = !on_grid, clamped = clamped),
+        as.data.frame(as.list(vals)))
+}
+
+# Power of the ADJUSTED UNKNOWN estimator over n, at fixed p_cg, u and effect
+# (the DTE-on / AEB-off row - clean, expectancy-free power).
+cgrc_unknown_power_curve <- function(lut, p_cg, true_effect, u) {
+  ns <- sort(unique(lut$n))
+  data.frame(n = ns,
+             power = vapply(ns, function(nn)
+               cgrc_unknown_op_at(lut, nn, p_cg, true_effect, u, 1, 0)$p_fav_gt_95,
+               numeric(1)))
+}
+
+# Plain-language verdict for an UNKNOWN-preserving design, computed from the
+# UNKNOWN lookup (never hand-written). States the same trade-off cgrc_verdict()
+# does, but names the directional CGR and the held UNKNOWN rate, and does not
+# pronounce a design "safe".
+cgrc_unknown_verdict <- function(lut, n, p_cg, true_effect, u) {
+  minstr <- cgr_unknown_min_stratum(n, p_cg, u)
+  fp  <- cgrc_unknown_op_at(lut, n, p_cg, true_effect, u, 0, 1)   # pure expectancy
+  feas <- if (minstr < 15) sprintf(
+    paste0(" (The smallest of the six strata averages ~%.0f participants here, so ",
+           "the estimand can be undefined for some trials - see feasibility.)"),
+    minstr) else ""
+  if (true_effect == 0) {
+    sprintf(paste0("UNKNOWN-preserving design at n=%d, directional CGR %.0f%%, ",
+      "UNKNOWN rate %.0f%%, no true effect: when the apparent signal is pure ",
+      "expectancy, the naive analysis reaches p<0.05 in %.0f%% of simulated ",
+      "trials, while the UNKNOWN-adjusted analysis reaches posterior P>0.95 in ",
+      "%.0f%%.%s"),
+      n, 100 * p_cg, 100 * u, 100 * fp$freq_sig, 100 * fp$p_fav_gt_95, feas)
+  } else {
+    pw <- cgrc_unknown_op_at(lut, n, p_cg, true_effect, u, 1, 0)   # clean power
+    sprintf(paste0("UNKNOWN-preserving design at n=%d, directional CGR %.0f%%, ",
+      "UNKNOWN rate %.0f%%: for a real %.1f-point effect the UNKNOWN-adjusted ",
+      "analysis reaches posterior P>0.95 in %.0f%% of simulated trials. When the ",
+      "apparent effect is instead pure expectancy, the naive analysis reaches ",
+      "p<0.05 in %.0f%% and the adjusted analysis in %.0f%%.%s"),
+      n, 100 * p_cg, 100 * u, true_effect, 100 * pw$p_fav_gt_95,
+      100 * fp$freq_sig, 100 * fp$p_fav_gt_95, feas)
+  }
+}
+
 # Normalise an arm / guess coding to "AC"/"PL", erroring (naming the offending
 # level) rather than guessing. Accepts AC/PL, MD/PL, active/placebo,
 # drug/placebo, microdose/placebo, 1/0, TRUE/FALSE, yes/no.

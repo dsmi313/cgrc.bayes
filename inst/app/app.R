@@ -13,10 +13,16 @@ library(ggplot2)
 library(cgrc.bayes)
 
 LUT <- tryCatch(cgrc_lookup(), error = function(e) NULL)
+# The UNKNOWN-preserving design lookup (six-stratum). NULL until built with
+# data-raw/build_unknown_lookup.R; the app then falls back to binary-only.
+LUT_U <- tryCatch(cgrc_unknown_lookup(), error = function(e) NULL)
+U_MAX <- if (is.null(LUT_U)) 0 else max(LUT_U$u)     # slider cap = highest built u
 # effect sizes offered = those simulated at EVERY expectancy level, so no cell
 # is missing when the expectancy slider moves.
 EFFS <- if (is.null(LUT)) c(0, 1.5, 3) else if ("mu_aeb" %in% names(LUT))
-  sort(Reduce(intersect, split(LUT$true_effect, LUT$mu_aeb))) else
+  # unique(): with a single mu_aeb level (e.g. a partial build) Reduce() returns
+  # that one group verbatim, duplicates and all - dedupe so `eff` stays a short list.
+  sort(unique(Reduce(intersect, split(LUT$true_effect, LUT$mu_aeb)))) else
   sort(unique(LUT$true_effect))
 NRANGE <- if (is.null(LUT)) c(60, 1000) else range(LUT$n)
 CELL_LABEL <- c("00" = "no effect, no expectancy",
@@ -38,6 +44,22 @@ op_table_A <- function(lut, n, p_cg, eff, mu_aeb) {
     cgrc_op_at(lut, n, p_cg, eff, z[1], z[2], mu_aeb)))
   # honesty markers: * interpolated between grid points; dagger = outside this
   # expectancy level's grid (an edge value is shown under the requested label).
+  mark <- ifelse(rows$clamped, " †", ifelse(rows$interpolated, " *", ""))
+  data.frame(
+    scenario = paste0(CELL_LABEL[paste0(rows$DTE, rows$AEB)], mark),
+    `true effect` = round(ifelse(rows$DTE == 1, eff, 0), 2),
+    `adjusted bias` = round(rows$adj_bias, 2),
+    `95% coverage` = round(rows$coverage95, 3),
+    `adjusted flags effect` = round(rows$p_fav_gt_95, 3),
+    `unadjusted significant` = round(rows$freq_sig, 3),
+    check.names = FALSE)
+}
+
+# Same four-scenario operating-characteristics table for the UNKNOWN estimator,
+# read from the UNKNOWN lookup (u snapped to its nearest grid level).
+op_table_A_unknown <- function(lut, n, p_cg, eff, u) {
+  rows <- do.call(rbind, lapply(list(c(0,0), c(1,0), c(0,1), c(1,1)), function(z)
+    cgrc_unknown_op_at(lut, n, p_cg, eff, u, z[1], z[2])))
   mark <- ifelse(rows$clamped, " †", ifelse(rows$interpolated, " *", ""))
   data.frame(
     scenario = paste0(CELL_LABEL[paste0(rows$DTE, rows$AEB)], mark),
@@ -86,6 +108,15 @@ ui <- navbarPage(
         div(class = "muted",
             "7.7 is Szigeti's microdose calibration, not a universal constant."),
         uiOutput("inflation_note"),
+        if (!is.null(LUT_U)) tagList(
+          tags$hr(),
+          sliderInput("u_rate", "Expected UNKNOWN-response rate", min = 0,
+                      max = U_MAX, value = 0, step = 0.05),
+          div(class = "muted",
+              "0 = the original binary design tool. Above 0 switches to the",
+              "UNKNOWN-preserving six-stratum design: the correct-guess rate above",
+              "is then the DIRECTIONAL rate (among AC/PL responders) and this",
+              "UNKNOWN rate is held fixed. Snapped to the nearest simulated level.")),
         tags$hr(),
         helpText(class = "muted",
           "Curves and tables are read from a precomputed simulation grid and",
@@ -181,6 +212,10 @@ server <- function(input, output, session) {
 
   no_lut <- is.null(LUT)
 
+  ## UNKNOWN-design mode is on when the UNKNOWN lookup exists and u > 0. At u = 0
+  ## every Panel A output is exactly the original binary design tool.
+  u_on <- reactive(!is.null(LUT_U) && !is.null(input$u_rate) && isTRUE(input$u_rate > 0))
+
   ## ---- Panel A ----
   output$inflation_note <- renderUI({
     inf <- cgr_aeb_inflation(as.numeric(input$mu_aeb), input$pcg)
@@ -192,14 +227,24 @@ server <- function(input, output, session) {
   output$verdict <- renderUI({
     if (no_lut) return(div(class = "verdict warn",
       "Lookup table not built. Run data-raw/build_lookup.R, then reinstall."))
+    if (u_on()) return(div(class = "verdict",
+      cgrc_unknown_verdict(LUT_U, input$n, input$pcg, as.numeric(input$eff), input$u_rate)))
     div(class = "verdict",
         cgrc_verdict(LUT, input$n, input$pcg, as.numeric(input$eff), as.numeric(input$mu_aeb)))
   })
 
   output$feasibility <- renderUI({
-    minstr <- cgr_min_stratum(input$n, input$pcg)
-    degen  <- if (no_lut) NA else
-      cgrc_op_at(LUT, input$n, input$pcg, as.numeric(input$eff), 0, 1, as.numeric(input$mu_aeb))$empty_stratum_rate
+    if (u_on()) {
+      minstr <- cgr_unknown_min_stratum(input$n, input$pcg, input$u_rate)
+      degen  <- cgrc_unknown_op_at(LUT_U, input$n, input$pcg, as.numeric(input$eff),
+                                   input$u_rate, 0, 1)$empty_stratum_rate
+      strata_word <- "smallest of six strata"
+    } else {
+      minstr <- cgr_min_stratum(input$n, input$pcg)
+      degen  <- if (no_lut) NA else
+        cgrc_op_at(LUT, input$n, input$pcg, as.numeric(input$eff), 0, 1, as.numeric(input$mu_aeb))$empty_stratum_rate
+      strata_word <- "smallest stratum"
+    }
     thin       <- minstr < THIN_STRATUM
     high_degen <- !is.na(degen) && degen > DEGEN_WARN
     warn <- thin || high_degen
@@ -213,16 +258,17 @@ server <- function(input, output, session) {
       else ""
     div(class = if (warn) "verdict warn feas" else "verdict feas",
       HTML(sprintf(
-        "<b>Feasibility.</b> Expected smallest stratum: <b>~%.0f</b> participants%s.
+        "<b>Feasibility.</b> Expected %s: <b>~%.0f</b> participants%s.
          Simulated trials with an empty stratum: <b>%s</b>.%s",
-        minstr, if (thin) " (thin)" else "",
+        strata_word, minstr, if (thin) " (thin)" else "",
         if (is.na(degen)) "n/a" else sprintf("%.1f%%", 100 * degen), extra)))
   })
 
   output$power_plot <- renderPlot({
     if (no_lut) return(NULL)
     eff <- as.numeric(input$eff)
-    pc <- cgrc_power_curve(LUT, input$pcg, eff)
+    pc <- if (u_on()) cgrc_unknown_power_curve(LUT_U, input$pcg, eff, input$u_rate)
+          else cgrc_power_curve(LUT, input$pcg, eff)
     # with no true effect there is nothing to have "power" for: the same curve
     # is then the adjusted false-favourable rate.
     ylab <- if (eff == 0) "adjusted false-favourable rate (no true effect)"
@@ -242,15 +288,21 @@ server <- function(input, output, session) {
   output$tradeoff_plot <- renderPlot({
     if (no_lut) return(NULL)
     eff <- as.numeric(input$eff)
-    pw  <- cgrc_op_at(LUT, input$n, input$pcg, eff, 1, 0)
-    fp  <- cgrc_op_at(LUT, input$n, input$pcg, eff, 0, 1, as.numeric(input$mu_aeb))
+    if (u_on()) {
+      pw <- cgrc_unknown_op_at(LUT_U, input$n, input$pcg, eff, input$u_rate, 1, 0)
+      fp <- cgrc_unknown_op_at(LUT_U, input$n, input$pcg, eff, input$u_rate, 0, 1)
+    } else {
+      pw <- cgrc_op_at(LUT, input$n, input$pcg, eff, 1, 0)
+      fp <- cgrc_op_at(LUT, input$n, input$pcg, eff, 0, 1, as.numeric(input$mu_aeb))
+    }
     # The frequentist rate is a TWO-SIDED t-test at p<0.05. Its matched Bayesian
     # comparator is posterior P(favourable) > 0.975 (not 0.95). Use the matched
     # column when the lookup has it; otherwise fall back and say so.
-    adj_col <- if (MATCHED_OK) "p_fav_gt_975" else "p_fav_gt_95"
-    adj_lab <- if (MATCHED_OK) "CGR-adjusted (posterior P>0.975)"
+    matched <- "p_fav_gt_975" %in% names(pw)
+    adj_col <- if (matched) "p_fav_gt_975" else "p_fav_gt_95"
+    adj_lab <- if (matched) "CGR-adjusted (posterior P>0.975)"
                else "CGR-adjusted (posterior P>0.95)"
-    cap <- if (MATCHED_OK)
+    cap <- if (matched)
       "Thresholds are matched: two-sided p<0.05 vs its Bayesian equivalent P>0.975."
     else paste("Note: unadjusted is two-sided p<0.05; adjusted is P>0.95, a looser",
                "bar than the matched P>0.975. Read within-analysis, not as a race.")
@@ -274,7 +326,10 @@ server <- function(input, output, session) {
 
   output$opchar <- renderTable({
     if (no_lut) return(NULL)
-    op_table_A(LUT, input$n, input$pcg, as.numeric(input$eff), as.numeric(input$mu_aeb))
+    if (u_on())
+      op_table_A_unknown(LUT_U, input$n, input$pcg, as.numeric(input$eff), input$u_rate)
+    else
+      op_table_A(LUT, input$n, input$pcg, as.numeric(input$eff), as.numeric(input$mu_aeb))
   }, digits = 3)
 
   ## exact simulation, only on demand. n_trials is user-set (10-1000, step 10);
@@ -282,11 +337,17 @@ server <- function(input, output, session) {
   exact_rv <- reactiveVal(NULL)
   observeEvent(input$run_exact, {
     nt <- input$n_trials
-    withProgress(message = sprintf("Running %d simulated trials x 4 scenarios...", nt),
-                 value = 0.3, {
-      op <- cgr_operating(n_trials = nt, n = input$n, p_cg = input$pcg,
-                          mu_dte = as.numeric(input$eff), mu_aeb = as.numeric(input$mu_aeb),
-                          noise = "all", seed = 1)
+    unk <- u_on()
+    withProgress(message = sprintf("Running %d %ssimulated trials x 4 scenarios...",
+                                   nt, if (unk) "UNKNOWN " else ""), value = 0.3, {
+      op <- if (unk)
+        cgr_unknown_operating(n_trials = nt, n = input$n, p_cg = input$pcg,
+                              u = input$u_rate, mu_dte = as.numeric(input$eff),
+                              mu_aeb = as.numeric(input$mu_aeb), noise = "all", seed = 1)
+      else
+        cgr_operating(n_trials = nt, n = input$n, p_cg = input$pcg,
+                      mu_dte = as.numeric(input$eff), mu_aeb = as.numeric(input$mu_aeb),
+                      noise = "all", seed = 1)
       incProgress(0.7)
       attr(op, "n_trials") <- nt
       exact_rv(op)

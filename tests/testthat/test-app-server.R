@@ -173,6 +173,24 @@ test_that("Panel B does not offer the binary design bridge for an UNKNOWN analys
   })
 })
 
+test_that("Panel A switches to the UNKNOWN design lookup when u > 0", {
+  skip_if_not(requireNamespace("shiny", quietly = TRUE), "shiny not installed")
+  app_dir <- system.file("app", package = "cgrc.bayes"); skip_if(app_dir == "", "app not installed")
+  skip_if(is.null(cgrc_unknown_lookup()), "UNKNOWN design lookup not built")
+  shiny::testServer(app_dir, {
+    session$setInputs(n = 200, pcg = 0.7, eff = 3, mu_aeb = 7.7, u_rate = 0)
+    expect_false(grepl("UNKNOWN-preserving", output$verdict$html))   # binary at u = 0
+    session$setInputs(u_rate = 0.3)
+    expect_match(output$verdict$html, "UNKNOWN-preserving")          # switches at u > 0
+    expect_match(output$verdict$html, "UNKNOWN rate 30")
+    expect_match(output$feasibility$html, "six strata")
+    session$setInputs(n_trials = 30, run_exact = 1)
+    op <- exact_rv()
+    expect_equal(nrow(op), 4L)
+    expect_true("u" %in% names(op))                                  # UNKNOWN model was used
+  })
+})
+
 test_that("Panel B runs an on-demand UNKNOWN design check (not the binary lookup)", {
   skip_if_not(requireNamespace("shiny", quietly = TRUE), "shiny not installed")
   app_dir <- system.file("app", package = "cgrc.bayes"); skip_if(app_dir == "", "app not installed")

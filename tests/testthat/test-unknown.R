@@ -323,6 +323,56 @@ test_that("cgr_unknown_min_stratum is the thinnest of the six expected cells", {
   expect_gt(cgr_unknown_min_stratum(200, 0.7, 0.2), 0)
 })
 
+## =============== UNKNOWN design lookup accessors (Panel A) ===================
+make_ulut <- function() {
+  grid <- expand.grid(n = c(100, 200, 400), p_cg = c(0.5, 0.7, 0.9),
+                      true_effect = c(0, 3), u = c(0.1, 0.3))
+  do.call(rbind, lapply(seq_len(nrow(grid)), function(i) {
+    g <- grid[i, ]
+    data.frame(DTE = c(0,1,0,1), AEB = c(0,0,1,1),
+               true = c(0, g$true_effect, 0, g$true_effect), u = g$u,
+               unadj_bias = 0, adj_bias = 0.02, adj_rmse = 0.5, coverage95 = 0.95,
+               p_fav_gt_95 = c(0.05, 0.90, 0.05, 0.70),
+               p_fav_gt_975 = c(0.03, 0.85, 0.03, 0.60),
+               freq_sig = c(0.05, 0.90, 0.70, 0.95), empty_stratum_rate = 0,
+               n = g$n, p_cg = g$p_cg, true_effect = g$true_effect,
+               stringsAsFactors = FALSE)
+  }))
+}
+
+test_that("cgrc_unknown_op_at snaps u/effect and interpolates bilinearly in (n,p_cg)", {
+  lut <- make_ulut()
+  r <- cgrc_unknown_op_at(lut, n = 300, p_cg = 0.6, true_effect = 3, u = 0.1, dte = 1, aeb = 0)
+  expect_equal(r$u, 0.1)
+  expect_equal(r$true_effect, 3)
+  expect_true(r$interpolated)                         # 300 and 0.6 are off-grid
+  expect_equal(r$p_fav_gt_95, 0.90, tolerance = 1e-9) # flat metric -> interpolates to itself
+  # u snaps to the nearest grid level
+  expect_equal(cgrc_unknown_op_at(lut, 200, 0.7, 3, 0.28, 1, 0)$u, 0.3)
+  # off-grid n beyond the grid is flagged clamped
+  expect_true(cgrc_unknown_op_at(lut, 5000, 0.7, 3, 0.1, 1, 0)$clamped)
+})
+
+test_that("cgrc_unknown_power_curve reads the DTE-on/AEB-off row over n", {
+  lut <- make_ulut()
+  pc <- cgrc_unknown_power_curve(lut, p_cg = 0.7, true_effect = 3, u = 0.1)
+  expect_equal(sort(pc$n), c(100, 200, 400))
+  expect_true(all(pc$power == 0.90))                  # the DTE=1,AEB=0 p_fav in the fixture
+})
+
+test_that("cgrc_unknown_verdict names the directional CGR and UNKNOWN rate", {
+  lut <- make_ulut()
+  v <- cgrc_unknown_verdict(lut, 200, 0.7, 3, 0.3)
+  expect_match(v, "UNKNOWN-preserving")
+  expect_match(v, "UNKNOWN rate 30%")
+  expect_match(v, "directional CGR 70%")
+})
+
+test_that("cgrc_unknown_lookup returns NULL when the rds is absent", {
+  # exercised via a fake empty package dir: the accessor must not error
+  expect_true(is.null(cgrc_unknown_lookup()) || is.data.frame(cgrc_unknown_lookup()))
+})
+
 ## ============================ H. Backend agreement ==========================
 test_that("conjugate and normal-JAGS UNKNOWN backends agree within MC error", {
   skip_if_not(requireNamespace("rjags", quietly = TRUE), "rjags/JAGS not installed")

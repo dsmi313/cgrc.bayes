@@ -166,7 +166,12 @@ assumptions*, not a claim that the extension beats the binary method in general
 or that the assumptions hold in any real trial (see `reports/UNRESOLVED.md` U10);
 the six strata are also thinner than four, so degenerate designs appear sooner.
 In the app, Panel B runs this on demand at your trial's n, directional CGR and
-observed UNKNOWN rate.
+observed UNKNOWN rate, and **Panel A** has an *Expected UNKNOWN-response rate*
+slider: set it above 0 and the whole design tool (verdict, power curve,
+false-positive/power trade-off, operating-characteristics table, feasibility)
+switches to the six-stratum estimator, read from a precomputed UNKNOWN lookup
+(`data-raw/build_unknown_lookup.R`). At `u = 0` Panel A is exactly the original
+binary design tool.
 
 ```r
 u_trial <- data.frame(condition = ..., guess = ..., value = ...)   # guess may be UNKNOWN
@@ -198,8 +203,10 @@ with a full input audit and downloadable cleaned data, exclusion log, and report
 | `R/09_app.R` | Shiny app support: lookup accessor, interpolation, verdict, input normalisation, audit, report |
 | `R/10_unknown.R` | UNKNOWN-preserving six-stratum extension (estimand, posterior, ROPE, headline, sensitivities) |
 | `inst/app/app.R` | the Shiny app (Design + Analyse panels) |
-| `data-raw/build_lookup.R` | precompute the operating-characteristics grid (run once, ~1h) |
-| `inst/extdata/cgrc_lookup.rds` | the precomputed grid, shipped as package data |
+| `data-raw/build_lookup.R` | precompute the binary operating-characteristics grid (run once, ~1h) |
+| `data-raw/build_unknown_lookup.R` | precompute the UNKNOWN (six-stratum) design grid over n×p_cg×effect×u (~50 min) |
+| `inst/extdata/cgrc_lookup.rds` | the precomputed binary grid, shipped as package data |
+| `inst/extdata/cgrc_unknown_lookup.rds` | the precomputed UNKNOWN design grid, shipped as package data |
 | `DESCRIPTION`, `NAMESPACE` | R package metadata (`cgrc.bayes`) |
 | `tests/testthat/` | estimand + reproduction + rope + app test suites |
 | `data-raw/download_data.R` | fetch + checksum-verify the public data |

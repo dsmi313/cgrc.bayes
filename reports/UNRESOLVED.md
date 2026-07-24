@@ -130,13 +130,18 @@ unbiased for the direct effect (|bias| < 0.06 at n=300) with 95% coverage
 adjusted false-favourable rate stays ~0.05 while the naive t-test flags ~0.73.
 The app's Panel B runs this on demand at the uploaded trial's n, directional CGR
 and observed UNKNOWN rate.
+A precomputed UNKNOWN design lookup now exists too (CH-24,
+`inst/extdata/cgrc_unknown_lookup.rds`, over n x p_cg x true_effect x u at
+mu_aeb = 7.7), and Panel A's UNKNOWN-response-rate slider reads it, so the design
+tool covers UNKNOWN designs interactively - not only the on-demand Panel B run.
 **Still conditional:** this is validation *under A1 and A2*. It is not a claim
 that the extension outperforms the binary method in general, nor that A1/A2 hold
 in any real trial. Differential UNKNOWN rates (A1 relaxed) and UNKNOWN responders
 who do carry expectancy (A2 relaxed) are not yet characterised; the six strata
 are also thinner than four, so `empty_stratum_rate` climbs faster at small n /
-high guess or UNKNOWN rates. The precomputed Panel A lookup still models binary
-guessing only, so it is not reused for UNKNOWN designs.
+high guess or UNKNOWN rates. The UNKNOWN lookup fixes mu_aeb at 7.7 (the adjusted
+estimator is ~insensitive to it under A2; the unadjusted comparator is not), so
+the mu_aeb control does not move the UNKNOWN design panel.
 
 ## U7  KDE bandwidth was never a deliberate choice
 The original uses sklearn's default fixed bandwidth of 1.0, not a data-adaptive

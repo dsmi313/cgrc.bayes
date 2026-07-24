@@ -220,6 +220,19 @@ chance" in the CGR-curve subtitle, the summary-table label, and the front-door
 docs, and reworded in the binary headline. CGR 0.50 is a target correct-guess
 rate, not proof that assignment and guessing are independent.
 
+### CH-24  Precomputed UNKNOWN design lookup and Panel A slider
+`data-raw/build_unknown_lookup.R` precomputes the six-stratum operating
+characteristics over n x p_cg x true_effect x u (mu_aeb fixed at 7.7; 360 cells,
+~50 min) into `inst/extdata/cgrc_unknown_lookup.rds`. New accessors
+`cgrc_unknown_lookup()`, `cgrc_unknown_op_at()`, `cgrc_unknown_power_curve()` and
+`cgrc_unknown_verdict()` mirror the binary ones (bilinear in n/p_cg; true_effect
+and u snapped). Panel A gains an "Expected UNKNOWN-response rate" slider: at u = 0
+it is the original binary design tool; above 0 the verdict, power curve,
+trade-off, operating-characteristics table and feasibility all switch to the
+UNKNOWN estimator. The binary lookup is unchanged and still used at u = 0.
+Also fixed a latent app bug: `EFFS` did not `unique()` the effect list, so a
+single-mu_aeb (e.g. partially-built) lookup produced a 1440-option `eff` select.
+
 ### CH-23  UNKNOWN-aware generative model and operating characteristics  [addresses U10]
 `sim_aeb_unknown()` extends the AEB model with an observed "I do not know"
 response under two explicit, deliberately-chosen assumptions: (A1) the
