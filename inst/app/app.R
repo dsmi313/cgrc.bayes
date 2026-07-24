@@ -55,10 +55,13 @@ ui <- navbarPage(
   "CGRC — is adjustment safe for my trial?",
   id = "navbar",
   header = tags$style(HTML(
-    ".verdict{font-size:1.15em;line-height:1.5;padding:12px 14px;
+    "body, .shiny-input-container, .form-control, .btn, label,
+      .control-label, table, .table{font-size:16px;}
+     h4{font-size:1.35em;} p, .help-block{font-size:1.05em;}
+     .verdict{font-size:1.2em;line-height:1.55;padding:14px 16px;
       background:#eef3f8;border-left:5px solid #2471A3;border-radius:4px;}
      .warn{background:#FDEDEC;border-left-color:#C0392B;}
-     .feas{font-size:1.0em;} .muted{color:#666;font-size:.9em;}")),
+     .feas{font-size:1.05em;} .muted{color:#666;font-size:1.0em;}")),
 
   ## ===== Panel A: Design ====================================================
   tabPanel(
@@ -213,10 +216,10 @@ server <- function(input, output, session) {
       geom_point(colour = "#2471A3", size = 2) +
       geom_vline(xintercept = input$n, linetype = "dashed", colour = "#C0392B") +
       annotate("text", x = input$n, y = 0.02, label = paste0("your n=", input$n),
-               colour = "#C0392B", hjust = -0.05, size = 3.6) +
+               colour = "#C0392B", hjust = -0.05, size = 4.8) +
       scale_y_continuous(limits = c(0, 1), labels = scales::percent) +
       labs(x = "sample size (n)", y = ylab) +
-      theme_minimal(base_size = 13) + theme(panel.grid.minor = element_blank())
+      theme_minimal(base_size = 16) + theme(panel.grid.minor = element_blank())
   })
 
   output$tradeoff_plot <- renderPlot({
@@ -244,11 +247,11 @@ server <- function(input, output, session) {
     ggplot(df, aes(metric, rate, fill = analysis)) +
       geom_col(position = position_dodge(0.7), width = 0.62) +
       geom_text(aes(label = sprintf("%.0f%%", 100 * rate)),
-                position = position_dodge(0.7), vjust = -0.4, size = 3.6) +
+                position = position_dodge(0.7), vjust = -0.4, size = 4.8) +
       scale_fill_manual(values = setNames(c("#C0392B", "#2471A3"), levels(df$analysis))) +
       scale_y_continuous(limits = c(0, 1.08), labels = scales::percent) +
       labs(x = NULL, y = NULL, fill = NULL, caption = cap) +
-      theme_minimal(base_size = 13) +
+      theme_minimal(base_size = 16) +
       theme(legend.position = "top", panel.grid.minor = element_blank())
   })
 
@@ -418,7 +421,7 @@ server <- function(input, output, session) {
       scale_y_continuous(expand = c(0,0)) +
       labs(x = "correct guess rate", y = "posterior probability", fill = NULL,
            subtitle = "black = perfect blinding; green = your observed CGR") +
-      theme_minimal(base_size = 12) + theme(legend.position = "bottom")
+      theme_minimal(base_size = 15) + theme(legend.position = "bottom")
   })
 
   output$b_sens <- renderTable({

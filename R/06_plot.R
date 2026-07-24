@@ -49,7 +49,7 @@ cgr_plot <- function(cur, obs_cgr, title = NULL,
                   subtitle = sprintf(paste("black dashed = perfect blinding",
                                            "(0.50); green dashed = observed",
                                            "CGR (%.3f)"), obs_cgr)) +
-    ggplot2::theme_minimal(base_size = 11) +
+    ggplot2::theme_minimal(base_size = 15) +
     ggplot2::theme(strip.placement = "outside",
                    panel.grid.minor = ggplot2::element_blank(),
                    legend.position = "top")
