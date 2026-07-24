@@ -1,7 +1,7 @@
 ^data$
 ^data-raw$
 ^reports$
-^.*\.Rmd$
+^.*\.[Rr]md$
 ^.*\.html$
 ^CGRC_bayes_cache$
 ^CGRC_bayes_files$

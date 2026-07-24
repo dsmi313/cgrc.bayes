@@ -1,0 +1,462 @@
+---
+title: "A Bayesian implementation of the Correct Guess Rate Curve"
+subtitle: "Same estimand, posterior uncertainty instead of resample-averaged p-values"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 2
+    number_sections: true
+    code_folding: hide
+    df_print: kable
+---
+
+```{r s-setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE,
+                      fig.width = 8, fig.height = 5, dpi = 110)
+set.seed(20260724)
+options(width = 100)
+
+# This manuscript consumes the installed cgrc.bayes package; every cgr_* and
+# nig_draws() call below is the package's implementation. The complete technical
+# record - full derivations, code audit, extended diagnostics, prior/robustness
+# sensitivities, the UNKNOWN-response extension, the interactive app and the
+# external-trial applications - lives in the exhaustive companion, CGRC_bayes.Rmd.
+library(cgrc.bayes)
+library(ggplot2)
+
+# The public week-1 microdose data. Place pacutes.csv in the working directory
+# (fetch + checksum-verify with data-raw/download_data.R from the repo).
+stopifnot(file.exists("pacutes.csv"))
+raw <- read.csv("pacutes.csv", stringsAsFactors = FALSE)
+
+# Map the raw coding (MD = microdose/active, PL = placebo) to AC/PL and keep the
+# first-week, single-timepoint rows, one record per participant.
+load_scale <- function(code, tp = "w1s1") {
+  d <- raw[raw$test_name == code & raw$tp == tp, ]
+  data.frame(condition = ifelse(d$condition == "MD", "AC", "PL"),
+             guess     = ifelse(d$guess     == "MD", "AC", "PL"),
+             value     = d$value, stringsAsFactors = FALSE)
+}
+SCALES <- c("PANAS" = "PANAS", "Mood VAS" = "mood",
+            "Energy VAS" = "energy", "Cognitive performance" = "CPS")
+sb    <- lapply(SCALES, load_scale); names(sb) <- names(SCALES)
+panas <- sb[["PANAS"]]
+
+N_DRAWS  <- 20000
+has_jags <- requireNamespace("rjags", quietly = TRUE) &&
+            requireNamespace("coda",  quietly = TRUE)
+```
+
+# Motivation and contribution
+
+Blinding fails in many trials, and psychedelic and microdose trials fail it
+badly: participants who correctly guess their arm can respond in part to *belief*
+rather than drug, and because more people in the active arm guess correctly, that
+belief-driven response piles up unevenly on the treatment side. The **Correct
+Guess Rate Curve (CGRC)** of Szigeti et al. (2023) asks a counterfactual of such a
+trial: *what would the estimated treatment effect have been if the correct-guess
+rate (CGR) had been 50% — i.e. if blinding had held?* It reweights the four
+treatment × guess strata to a target guess rate while holding the within-class arm
+composition fixed, so only *how much guessing happened* changes, never *who
+received what*.
+
+Szigeti et al. implement this by resampling from kernel-density estimates of the
+four strata to a target guess rate, fitting a treatment contrast to each
+pseudo-dataset, and averaging the resulting estimates and p-values over resamples.
+
+This document does two things. First, it **reproduces** that estimand and its
+published behaviour. Second, it presents a **Bayesian implementation of the same
+estimand**: a Normal-Inverse-Gamma posterior for the four stratum means whose
+uncertainty propagates analytically through the reweighting, replacing the
+resample-averaged p-value with a posterior distribution over the CGR-adjusted
+contrast. The estimand is unchanged; only the treatment of uncertainty differs.
+
+The headline empirical result is that on the public microdose data the PANAS
+positive-affect effect attenuates from a raw active-minus-placebo difference of
+about 3.2 points to roughly 1 point once the analysis is corrected to a 50%
+guess rate — consistent with a substantial expectancy contribution to the
+unadjusted signal.
+
+Two cautions frame everything below. The Bayesian version is **not** claimed to be
+categorically better inference: it targets the same quantity and removes a Monte
+Carlo term with no scientific content, nothing more. And **attenuation is not a
+causal decomposition**: the drop from 3.2 to 1 does not measure "the fraction of
+the treatment effect caused by expectancy." The CGRC is a sensitivity analysis for
+unblinding under an explicit reweighting model, not a measurement of the
+expectancy-mediated share of the effect.
+
+# The Correct Guess Rate Curve estimand
+
+Each participant contributes a treatment arm (active AC / placebo PL) and a guess
+(AC / PL), giving four strata: `ACAC`, `ACPL`, `PLAC`, `PLPL` (arm, then guess).
+Write $\bar y_k$ for the mean outcome in stratum $k$ and $\rho_k$ for its share of
+the sample. The **observed correct-guess rate** is
+$c_{obs} = \rho_{ACAC} + \rho_{PLPL}$. Two within-class ratios summarise how the
+correct- and incorrect-guessers split across arms:
+$$
+r = \frac{\rho_{PLPL}}{\rho_{PLPL}+\rho_{ACAC}}, \qquad
+s = \frac{\rho_{ACPL}}{\rho_{ACPL}+\rho_{PLAC}} .
+$$
+At a target guess rate $c$ the four strata receive weights
+$$
+w_{ACAC}=c(1-r),\quad w_{PLPL}=cr,\quad w_{ACPL}=(1-c)s,\quad w_{PLAC}=(1-c)(1-s),
+$$
+so the correct-guess weights sum to $c$ and the incorrect-guess weights to $1-c$,
+and the CGR-adjusted contrast is the reweighted active-minus-placebo difference
+$$
+\Delta(c)=\frac{w_{ACAC}\bar y_{ACAC}+w_{ACPL}\bar y_{ACPL}}{w_{ACAC}+w_{ACPL}}
+        -\frac{w_{PLPL}\bar y_{PLPL}+w_{PLAC}\bar y_{PLAC}}{w_{PLPL}+w_{PLAC}} .
+$$
+The target of interest is $\Delta(0.5)$: the effect at a 50% guess rate.
+
+**The observed-CGR identity.** Because $r$ and $s$ are defined from the observed
+composition, at $c=c_{obs}$ the reweighting is a no-op and
+$$
+\Delta(c_{obs}) = \bar y_{AC} - \bar y_{PL},
+$$
+the ordinary unadjusted arm-mean difference a trial reports in its own table. This
+identity is exact and is the central validation tool used throughout: a curve is
+only in the right place if it passes through the reported unadjusted effect at the
+observed CGR.
+
+```{r s-estimand}
+st  <- cgr_strata(panas)                 # exact ratios (the analytic estimand path)
+rat <- cgr_ratios(st)
+o   <- cgr_observed(st)
+w05 <- cgr_weights(0.5, rat$r, rat$s)
+idn <- cgr_reference_line_test(panas, orig_cgr = o)
+knitr::kable(
+  data.frame(stratum = STRATA, n = lengths(st)[STRATA],
+             mean = round(vapply(st[STRATA], mean, numeric(1)), 2),
+             weight_at_c0.5 = round(w05[STRATA], 3)),
+  caption = sprintf(
+    "PANAS week 1: four strata; observed CGR = %.4f, r = %.3f, s = %.3f",
+    o, rat$r, rat$s))
+```
+
+For PANAS, $\Delta(0.5) =$ `r round(cgr_delta(0.5, lapply(st, mean), rat$r, rat$s), 3)`
+points, and the identity holds to machine precision:
+$\Delta(c_{obs}) =$ `r round(idn$D_at_obs, 3)` equals the raw arm-mean difference
+`r round(idn$raw_mean_diff, 3)` (absolute error
+`r sprintf("%.1e", abs(idn$D_at_obs - idn$raw_mean_diff))`). That reweighted
+1-point value at perfect blinding, against the ~3.2-point raw difference, is the
+CGRC's substantive claim for PANAS.
+
+The reproduction of Szigeti's *shipped* code uses a rounded-ratio variant
+(`legacy_round = TRUE`), which shifts these numbers by hundredths of a point; the
+estimand itself uses the exact ratios above. The two paths are kept distinct and
+are compared in the full Rmd.
+
+# Bayesian implementation of the same estimand
+
+The original procedure obtains uncertainty by resampling pseudo-datasets. The
+Bayesian implementation instead places a posterior on each stratum mean and
+propagates it through $\Delta(c)$ directly. Each stratum is modelled as
+$y_{ij}\mid\mu_j,\sigma^2_j \sim N(\mu_j,\sigma^2_j)$ with a
+Normal-Inverse-Gamma prior
+$$
+\mu_j\mid\sigma^2_j \sim N(m_0,\ \sigma^2_j/k_0),\qquad
+\sigma^2_j \sim \text{Inv-Gamma}(a_0,b_0),
+$$
+whose four hyperparameters have plain meanings: $m_0$ is the prior mean, $k_0$ a
+prior sample size in pseudo-observations, and $(a_0,b_0)$ the prior shape and
+scale for the variance. With the vague defaults used here ($m_0=0$, $k_0=10^{-6}$,
+$a_0=b_0=10^{-3}$) the prior contributes negligibly against dozens of real
+observations. The conjugate update is closed-form,
+$$
+k_n=k_0+n,\quad m_n=\frac{k_0 m_0+n\bar y}{k_n},\quad a_n=a_0+\tfrac n2,\quad
+b_n=b_0+\tfrac12\!\sum_i (y_i-\bar y)^2+\frac{k_0 n(\bar y-m_0)^2}{2k_n},
+$$
+giving $\sigma^2_j\mid y \sim \text{Inv-Gamma}(a_n,b_n)$ and
+$\mu_j\mid\sigma^2_j,y \sim N(m_n,\sigma^2_j/k_n)$.
+
+Posterior draws of the four stratum means are pushed through $\Delta(c)$ for every
+$c$, yielding a posterior over the whole curve — a posterior mean, a 95% credible
+interval, and the posterior probability that the effect is favourable, at each
+guess rate. The number of draws controls only Monte Carlo error in these
+posterior summaries; it is not a sample size and carries no information about
+participants. (The order of the conjugate draws, the within-draw dependence of
+$\mu$ and $\sigma^2$, and the full derivation are in the complete Rmd; they are not
+needed to read the results.)
+
+```{r s-bayes}
+fit_panas <- cgrc(panas, n_draws = N_DRAWS, seed = 2)   # posterior propagation
+knitr::kable(
+  fit_panas$summary[, c("what", "post_mean", "cri_lo", "cri_hi", "p_favourable")],
+  digits = 3,
+  caption = "PANAS: CGR-adjusted posterior (Normal-Inverse-Gamma conjugate)")
+```
+
+# Reproduction and validation
+
+## Reproduction of the published CGRC
+
+Under the activated-expectancy-bias (AEB) generative model of Szigeti et al., the
+implementation reproduces the published simulation behaviour. At the paper's regime
+($n=230$, CGR $=0.7$, a 3-point effect, expectancy magnitude 7.7), the unadjusted
+two-sided significance rates across the four (effect, expectancy) scenarios match
+the published Table 1 values (0.05 / 0.86 / 0.78 / 0.99), and the CGR-adjusted
+estimator is close to unbiased with near-nominal coverage.
+
+```{r s-repro, cache=TRUE}
+op <- cgr_operating(n = 230, p_cg = 0.7, mu_dte = 3, mu_aeb = 7.7,
+                    n_trials = 500, seed = 1)
+knitr::kable(
+  data.frame(
+    scenario = c("no effect / no expectancy", "effect / no expectancy",
+                 "no effect / expectancy", "effect / expectancy"),
+    `unadjusted p<0.05 (2-sided)` = round(op$freq_sig, 3),
+    `adjusted bias` = round(op$adj_bias, 3),
+    `95% coverage` = round(op$coverage95, 3),
+    check.names = FALSE),
+  caption = "AEB simulation, n = 230, CGR = 0.7, 500 trials (published Table 1: 0.05/0.86/0.78/0.99)")
+```
+
+## The observed-CGR identity
+
+The identity of Section 2 holds for every outcome: the CGR-adjusted curve recovers
+the ordinary unadjusted contrast at the observed CGR, to machine precision. This is
+what makes a reference line drawn on the curve checkable rather than decorative.
+
+```{r s-identity}
+knitr::kable(
+  do.call(rbind, lapply(names(sb), function(nm) {
+    z <- cgr_reference_line_test(sb[[nm]], orig_cgr = cgr_observed(cgr_strata(sb[[nm]])))
+    data.frame(outcome = nm, observed_CGR = round(z$computed_obs_cgr, 4),
+               `Delta(c_obs)` = round(z$D_at_obs, 3),
+               `raw AC-PL`    = round(z$raw_mean_diff, 3),
+               `abs error`    = sprintf("%.1e", abs(z$D_at_obs - z$raw_mean_diff)),
+               check.names = FALSE)
+  })),
+  caption = "Observed-CGR identity across the four outcomes")
+```
+
+## KDE resampling versus the analytic estimand
+
+The original kernel-density resampling and the analytic $\Delta(c)$ target the same
+quantity. As the resample count grows, the KDE average converges on the analytic
+value; the only systematic difference at small counts is Monte Carlo variation.
+Because $\Delta(c)$ depends on the strata only through their means, and
+kernel-density smoothing preserves means, the KDE step does not materially change
+the estimand.
+
+```{r s-kde, cache=TRUE}
+set.seed(11)
+kl <- cgr_kde_ladder(panas, cgr_observed(cgr_strata(panas)),
+                     reps = c(32, 100, 1000, 10000))
+knitr::kable(kl[, c("n_rep", "kde_est", "kde_mcse", "analytic", "diff_from_analytic")],
+             digits = 3,
+             caption = "KDE resampling converges on the analytic Delta (PANAS, observed CGR)")
+```
+
+## Original inference versus Bayesian inference
+
+The two implementations agree on the estimand but differ in their summary of
+evidence. Over repeated simulated trials, the KDE point estimate and the Bayesian
+posterior mean of $\Delta(0.5)$ are almost perfectly correlated and share the same
+small bias. Their *decisions*, however, differ: at matched thresholds the posterior
+flags the effect appreciably more often than a rule based on the resample-averaged
+p-value, and the two disagree on a fifth of trials.
+
+```{r s-headtohead, cache=TRUE}
+set.seed(101)
+N <- 300; n_i <- 200; p_cg <- 0.7; mu_dte <- 3
+ke <- kp <- be <- bp <- rep(NA_real_, N)
+for (i in seq_len(N)) {
+  di <- sim_aeb(n_i, p_cg, dte_on = TRUE, aeb_on = FALSE, mu_dte = mu_dte)
+  if (!all(STRATA %in% paste0(di$condition, di$guess))) next
+  ki <- cgr_kde(di, 0.5, n_rep = 100); ke[i] <- ki$est; kp[i] <- ki$p
+  sti <- cgr_strata(di); rti <- cgr_ratios(sti)          # loop-local; do not clobber PANAS st/rat
+  ddi <- cgr_delta(0.5, lapply(sti, nig_draws, n_draws = 4000), rti$r, rti$s)
+  be[i] <- mean(ddi); bp[i] <- mean(ddi > 0)
+}
+ok <- !is.na(kp)
+knitr::kable(data.frame(
+  Quantity = c("Point-estimate correlation (KDE vs posterior)",
+               "Point-estimate bias — KDE / posterior",
+               "Flag rate — resample-averaged p < 0.05",
+               "Flag rate — posterior P(favourable) > 0.975",
+               "Trials where the two decisions agree"),
+  Value = c(sprintf("%.3f", cor(ke[ok], be[ok])),
+            sprintf("%+.3f / %+.3f", mean(ke[ok]) - mu_dte, mean(be[ok]) - mu_dte),
+            sprintf("%.3f", mean(kp[ok] < 0.05)),
+            sprintf("%.3f", mean(bp[ok] > 0.975)),
+            sprintf("%.0f%%", 100 * mean((kp[ok] < 0.05) == (bp[ok] > 0.975)))),
+  check.names = FALSE),
+  caption = "KDE procedure vs Bayesian posterior, 300 simulated trials (true Delta = 3)")
+```
+
+Averaging a p-value across resampled pseudo-datasets does not produce a conventional
+p-value: the average has no accepted sampling interpretation, and here it discards
+detection power that the posterior retains. (In the full Rmd a bandwidth-zero control
+confirms this is the averaging step, not the kernel.) Retaining the posterior draws
+instead yields directly interpretable quantities — the point of Section 5.
+
+# Empirical microdosing application
+
+The public data are the self-blinding microdose trial re-analysed by Szigeti et al.
+(2023). Following the paper, only week-1, single-timepoint records are used, giving
+one observation per participant. For PANAS this is `r nrow(panas)` participants with
+an observed CGR of `r round(o, 3)`.
+
+The public week-1 data give an overall CGR of 0.647, whereas Figure 4 marks 0.72.
+Inspection of the original source code shows that 0.72 is a hardcoded plotting
+constant rather than the CGR calculated from the analyzed data. The CGRC identity
+confirms that 0.647, not 0.72, is the point at which the curve recovers the reported
+unadjusted effect.
+
+```{r s-empirical}
+emp <- do.call(rbind, lapply(names(sb), function(nm) {
+  d <- sb[[nm]]
+  f <- cgrc(d, n_draws = N_DRAWS, seed = 2)
+  h <- cgrc_headline(d, n_draws = N_DRAWS, seed = 2)   # delta = 0.5 SD MID
+  s <- f$summary
+  data.frame(outcome = nm, n = nrow(d), observed_CGR = round(f$observed_cgr, 3),
+             `raw effect` = round(s$post_mean[1], 2),
+             `adjusted (CGR 0.50)` = round(s$post_mean[2], 2),
+             `95% CrI` = sprintf("[%.2f, %.2f]", s$cri_lo[2], s$cri_hi[2]),
+             `P(favourable)` = sprintf("%.0f%%", 100 * s$p_favourable[2]),
+             `P(meaningful)` = sprintf("%.0f%%", 100 * h$p_meaningful_blind),
+             check.names = FALSE)
+}))
+knitr::kable(emp, caption = "CGR-adjusted results for the four outcomes (adjusted = perfect blinding, CGR 0.50; meaningful = beyond a half-SD difference)")
+```
+
+```{r s-panas-fig, fig.height=6}
+plot(fit_panas, title = "PANAS, week 1")
+```
+
+The table reproduces the published attenuation pattern: PANAS and the mood/energy
+VAS effects shrink substantially once corrected to a 50% guess rate, with the
+cognitive-performance outcome near zero throughout.
+
+Two probabilities carry the practical message, and they are **not** the same
+quantity. $P(\text{favourable})$ — the posterior probability the adjusted effect is
+on the beneficial side of zero — answers "is there an effect at all." $P(\text{
+meaningful})$ — the posterior probability the effect exceeds a pre-declared
+minimally-important difference (a half standard deviation here) — answers "is it
+large enough to matter." A tail probability is not a p-value: it is a direct
+statement about the parameter given the data, and separating "non-zero" from
+"clinically important" is exactly what a single significance verdict cannot do.
+
+# Simulation and robustness
+
+The AEB operating-characteristics study (Section 4.1, `cgr_operating`) establishes
+the estimator's behaviour under the stated model: the CGR-adjusted estimate is
+approximately unbiased with near-nominal 95% credible-interval coverage, and when
+the true adjusted effect is zero the false-favourable rate is controlled. Two
+caveats matter for design. CGR adjustment can **reduce power** relative to the
+unadjusted comparison, because it discards the expectancy-driven part of the signal.
+And performance **deteriorates when strata become sparse**: at a high guess rate with
+small $n$, a wrong-guess stratum can be empty and the estimand undefined for that
+trial.
+
+```{r s-sim-sparse, cache=TRUE}
+sp <- cgr_operating(n = 80, p_cg = 0.9, mu_dte = 3, mu_aeb = 7.7,
+                    n_trials = 300, seed = 1)
+r11 <- sp[sp$DTE == 1 & sp$AEB == 0, ]
+knitr::kable(
+  data.frame(design = "n = 80, CGR = 0.90",
+             `empty-stratum rate` = sprintf("%.0f%%", 100 * r11$empty_stratum_rate),
+             `adjusted bias (feasible trials)` = round(r11$adj_bias, 2),
+             `95% coverage` = round(r11$coverage95, 3),
+             check.names = FALSE),
+  caption = "Sparse-stratum deterioration: a thin discordant stratum leaves many trials undefined")
+```
+
+**Robustness to the within-stratum model.** Refitting with a Student-t likelihood
+(a heavier-tailed alternative to the normal) probes sensitivity to the Gaussian
+assumption. The exact attenuation magnitude shifts a little, but the qualitative
+inference does not: the estimated degrees of freedom are large, so the t collapses
+toward the normal. This is why *percentage* attenuation should be read as
+model-dependent while the direction and rough size of the correction are stable.
+
+```{r s-robust, eval=has_jags, cache=TRUE}
+set.seed(6)
+jn <- cgr_jags(panas, likelihood = "normal", n_iter = 10000, n_chains = 4)
+jt <- cgr_jags(panas, likelihood = "t",      n_iter = 10000, n_chains = 4)
+i5 <- function(x) which.min(abs(x$cgr - 0.5))
+knitr::kable(data.frame(
+  likelihood = c("normal", "Student-t"),
+  adjusted_at_0.5 = round(c(jn$est[i5(jn)], jt$est[i5(jt)]), 3),
+  cri_95 = c(sprintf("[%.2f, %.2f]", jn$lo[i5(jn)], jn$hi[i5(jn)]),
+             sprintf("[%.2f, %.2f]", jt$lo[i5(jt)], jt$hi[i5(jt)])),
+  P_favourable = round(c(jn$p_fav[i5(jn)], jt$p_fav[i5(jt)]), 3),
+  est_df_nu = c(NA, round(attr(jt, "nu"), 1))),
+  caption = "PANAS at CGR 0.50: normal vs Student-t likelihood (JAGS)")
+```
+
+```{r s-robust-note, echo=FALSE, results='asis'}
+if (!has_jags) cat(
+  "*The Student-t robustness check requires a JAGS install (`rjags`), which is not",
+  "available in this render. In the complete Rmd it runs and gives an estimated",
+  "nu of roughly 18, so the t collapses toward the normal and the Gaussian",
+  "conclusion is robust.*\n")
+```
+
+Additional sensitivity analyses — a corrected JAGS backend cross-check, prior
+sensitivity, Beta uncertainty in $r$ and $s$, per-stratum skewness/kurtosis, and
+small-stratum subsampling — were conducted and are retained in the complete Rmd.
+Their qualitative message is the same: the estimand and the direction of the
+correction are stable; only the exact magnitude is model-dependent.
+
+# Discussion
+
+**Same estimand.** The Bayesian implementation does not redefine the CGRC target.
+It computes exactly $\Delta(c)$ — the reweighted active-minus-placebo contrast at a
+target guess rate — and satisfies the same observed-CGR identity.
+
+**A different treatment of uncertainty.** Where the original generates uncertainty
+by repeatedly resampling pseudo-datasets, the Bayesian version places a posterior on
+the four stratum means and propagates it analytically through the reweighting. On
+the Monte Carlo distinction, precision matters: the original introduces Monte Carlo
+error by *generating the estimate* from finite resampling, whereas the Bayesian
+implementation still uses Monte Carlo draws — so it is not error-free — but those
+draws merely *summarise a defined posterior distribution* rather than construct the
+estimand. More draws shrink summary error toward a fixed target; more resamples
+chase a moving one.
+
+**Interpretability.** Retaining the posterior gives directly interpretable
+quantities such as $P(\Delta>0\mid y)$ and $P(\Delta>\delta\mid y)$ — probability of
+a favourable effect and probability of a meaningful one — without averaging p-values
+across pseudo-datasets. Retaining the draws also enables practical-equivalence
+(ROPE) decompositions of the posterior around a clinical threshold; that machinery
+and its width-sensitivity analysis are demonstrated in the complete Rmd.
+
+**What this does not establish.** The central defensible claim is narrow: *the
+Bayesian implementation targets the same CGRC estimand while replacing repeated
+pseudo-dataset inference with a posterior distribution over that estimand.* In
+particular:
+
+- Attenuation is **not** the percentage of the treatment effect caused by
+  expectancy; the drop from ~3.2 to ~1 on PANAS is not a causal share.
+- The CGRC depends on the assumptions of its reweighting estimand (fixed
+  within-class arm ratios, balanced allocation, the AEB generative model in the
+  simulations); reproducing the original curve validates the computation, not those
+  assumptions.
+- Guessing may itself be influenced by experienced efficacy, side effects or other
+  post-randomisation information, which the reweighting cannot disentangle.
+- The analysis is best read as a **sensitivity analysis for unblinding and
+  expectancy**, not a causal decomposition of the treatment effect.
+
+# Sources
+
+Only the first two references underpin this work; full per-finding citations are in
+`reports/SOURCES.md`.
+
+- **Primary methodological source** — the original CGRC method reproduced here.
+  Szigeti B, Nutt D, Carhart-Harris R, Erritzoe D. 2023. "The difference between
+  'placebo group' and 'placebo control': a case study in psychedelic microdosing."
+  *Scientific Reports* 13:12107. <https://doi.org/10.1038/s41598-023-34938-7>
+- **Empirical dataset** — source of the public week-1 data reanalysed here.
+  Szigeti B, et al. 2021. "Self-blinding citizen science to explore psychedelic
+  microdosing." *eLife* 10:e62878. <https://doi.org/10.7554/eLife.62878>
+
+This project reproduces and re-analyses published work; it is independent of and not
+endorsed by the original authors.
+
+```{r s-session, echo=FALSE}
+sessionInfo()
+```
