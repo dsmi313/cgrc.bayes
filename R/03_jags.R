@@ -139,20 +139,37 @@ cgr_check_backends <- function(df, grid = seq(0, 1, length.out = 101),
 # within-class arm shares) and u (target UNKNOWN rate), all passed as data, so
 # the JAGS and conjugate implementations cannot drift apart. Index mapping is
 # explicit: 1=ACAC, 2=ACPL, 3=ACU, 4=PLAC, 5=PLPL, 6=PLU (UNKNOWN_STRATA order).
-jags_unknown_model_string <- function(likelihood = c("normal", "t")) {
-  likelihood <- match.arg(likelihood)
+# pooling = "none" is the independent-stratum model (the default, matching the
+# conjugate backend). pooling = "partial" (Section 17G) is an ASSUMPTION-DEPENDENT
+# sensitivity that partially pools the six stratum means toward a learned global
+# mean mu0 with learned spread; the amount of shrinkage is estimated from the
+# data. It is NOT the default and does not match the conjugate posterior.
+jags_unknown_model_string <- function(likelihood = c("normal", "t"),
+                                      pooling = c("none", "partial")) {
+  likelihood <- match.arg(likelihood); pooling <- match.arg(pooling)
   lik <- if (likelihood == "normal") {
     "  for (i in 1:N) { y[i] ~ dnorm(mu[k[i]], tau[k[i]]) }\n"
   } else {
     paste0("  for (i in 1:N) { y[i] ~ dt(mu[k[i]], tau[k[i]], nu) }\n",
            "  nu ~ dexp(0.1) T(2, 100)\n")
   }
+  mu_prior <- if (pooling == "partial") {
+    paste0(
+      "  for (j in 1:6) {\n",
+      "    tau[j] ~ dgamma(a0, b0)\n",
+      "    mu[j]  ~ dnorm(mu0, prec_mu)\n",       # partial pooling toward mu0
+      "  }\n",
+      "  mu0 ~ dnorm(m0, 1.0E-6)\n",
+      "  prec_mu ~ dgamma(a_mu, b_mu)\n")
+  } else {
+    paste0(
+      "  for (j in 1:6) {\n",
+      "    tau[j] ~ dgamma(a0, b0)\n",
+      "    mu[j]  ~ dnorm(m0, k0 * tau[j])\n",
+      "  }\n")
+  }
   paste0(
-    "model {\n", lik,
-    "  for (j in 1:6) {\n",
-    "    tau[j] ~ dgamma(a0, b0)\n",
-    "    mu[j]  ~ dnorm(m0, k0 * tau[j])\n",
-    "  }\n",
+    "model {\n", lik, mu_prior,
     "  for (m in 1:M) {\n",
     "    w_acac[m] <- (1 - u) * cgr[m] * (1 - r)\n",
     "    w_acpl[m] <- (1 - u) * (1 - cgr[m]) * s\n",
@@ -169,10 +186,11 @@ jags_unknown_model_string <- function(likelihood = c("normal", "t")) {
 
 cgr_unknown_jags <- function(df, grid = seq(0, 1, length.out = 101),
                              u_target = NULL, likelihood = c("normal", "t"),
+                             pooling = c("none", "partial"),
                              n_iter = 10000, n_burn = 2000, n_chains = 4, seed = 1,
                              prior = list(m0 = 0, k0 = 1e-6, a0 = 1e-3, b0 = 1e-3),
                              direction = 1) {
-  likelihood <- match.arg(likelihood)
+  likelihood <- match.arg(likelihood); pooling <- match.arg(pooling)
   if (!requireNamespace("rjags", quietly = TRUE)) {
     stop("needs rjags + a JAGS install; see https://mcmc-jags.sourceforge.io",
          call. = FALSE)
@@ -193,10 +211,15 @@ cgr_unknown_jags <- function(df, grid = seq(0, 1, length.out = 101),
 
   dat <- c(list(y = y, k = k, N = length(y), cgr = grid_safe, M = length(grid_safe),
                 r = z(rat$r), s = z(rat$s), t = z(rat$t), u = u), prior)
+  if (pooling == "partial") {
+    dat[["k0"]] <- NULL                    # unused by the pooled prior; avoids a JAGS note
+    dat <- c(dat, list(a_mu = if (is.null(prior$a_mu)) 1e-3 else prior$a_mu,
+                       b_mu = if (is.null(prior$b_mu)) 1e-3 else prior$b_mu))
+  }
   inits <- lapply(seq_len(n_chains), function(i)
     list(.RNG.name = "base::Mersenne-Twister", .RNG.seed = seed + i))
 
-  con <- textConnection(jags_unknown_model_string(likelihood))
+  con <- textConnection(jags_unknown_model_string(likelihood, pooling))
   on.exit(close(con), add = TRUE)
   m <- rjags::jags.model(con, data = dat, inits = inits,
                          n.chains = n_chains, quiet = TRUE)
@@ -218,8 +241,10 @@ cgr_unknown_jags <- function(df, grid = seq(0, 1, length.out = 101),
       if (!inherits(g, "try-error")) rh <- unname(g[dc])
     }
   }
+  meth <- paste0(if (likelihood == "t") "jags-t" else "jags",
+                 if (pooling == "partial") "-pooled" else "")
   out <- data.frame(
-    cgr = grid, method = if (likelihood == "t") "jags-t" else "jags",
+    cgr = grid, method = meth,
     est = unname(colMeans(dr)), sd = unname(apply(dr, 2, stats::sd)),
     lo  = unname(apply(dr, 2, function(x) unname(stats::quantile(x, .025)))),
     hi  = unname(apply(dr, 2, function(x) unname(stats::quantile(x, .975)))),
@@ -227,6 +252,7 @@ cgr_unknown_jags <- function(df, grid = seq(0, 1, length.out = 101),
     ess = ess, rhat = rh, stringsAsFactors = FALSE)
   out$mcse <- out$sd / sqrt(out$ess)
   attr(out, "u") <- u
+  attr(out, "pooling") <- pooling
   if ("nu" %in% colnames(all)) attr(out, "nu") <- mean(all[, "nu"])
   out
 }

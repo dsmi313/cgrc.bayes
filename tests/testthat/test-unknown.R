@@ -237,6 +237,46 @@ test_that("direction flips which tail counts as favourable", {
   expect_equal(up$p_fav + down$p_fav, 1, tolerance = 0.02)
 })
 
+## ================= Optional sensitivities (Section 17E, 17F) =================
+test_that("ratio-uncertainty is off by default and widens intervals when on", {
+  d <- mk_unknown(c(ACAC = 25, ACPL = 12, ACU = 15, PLAC = 14, PLPL = 22, PLU = 13), seed = 7)
+  set.seed(1); base <- cgr_unknown_conjugate(d, seq(0.1, 0.9, length.out = 9), n_draws = 8000)
+  set.seed(1); base2 <- cgr_unknown_conjugate(d, seq(0.1, 0.9, length.out = 9), n_draws = 8000,
+                                              ratio_uncertainty = FALSE)
+  expect_identical(base, base2)                       # default path unchanged
+  set.seed(1); ru <- cgr_unknown_conjugate(d, seq(0.1, 0.9, length.out = 9), n_draws = 8000,
+                                           ratio_uncertainty = TRUE)
+  # propagating ratio uncertainty cannot, on average, narrow the intervals
+  expect_gt(mean(ru$hi - ru$lo), mean(base$hi - base$lo) - 1e-6)
+  expect_true(all(is.finite(ru$est)))
+})
+
+test_that("ratio draws hold a structural (empty-cell) share fixed", {
+  d <- mk_unknown(c(ACAC = 20, ACPL = 8, ACU = 10, PLAC = 9, PLPL = 18, PLU = 0))
+  rd <- cgr_unknown_ratio_draws(cgr_unknown_strata(d), n_draws = 500)
+  expect_length(rd$t, 1L)          # PLU empty -> t fixed at structural 1
+  expect_equal(rd$t, 1)
+  expect_length(rd$r, 500L)        # correct class has both cells -> randomised
+})
+
+test_that("independent shared-guess estimand runs and defaults to the observed marginal", {
+  d <- mk_unknown(c(ACAC = 25, ACPL = 12, ACU = 15, PLAC = 14, PLPL = 22, PLU = 13), seed = 3)
+  z <- cgr_unknown_independent(d, n_draws = 8000, seed = 1)
+  expect_s3_class(z, "cgr_unknown_independent")
+  expect_equal(sum(z$q), 1, tolerance = 1e-12)
+  expect_true(z$p_favourable >= 0 && z$p_favourable <= 1)
+  expect_true(z$hi >= z$lo)
+  # seed is recorded and reproducible
+  z2 <- cgr_unknown_independent(d, n_draws = 8000, seed = 1)
+  expect_equal(z$est, z2$est, tolerance = 1e-12)
+})
+
+test_that("independent estimand errors when a weighted class has an empty arm cell", {
+  d <- mk_unknown(c(ACAC = 20, ACPL = 10, ACU = 0, PLAC = 12, PLPL = 18, PLU = 8))
+  # default q gives the UNKNOWN class positive weight (PLU nonempty) but ACU empty
+  expect_error(cgr_unknown_independent(d, n_draws = 2000), "empty arm cell")
+})
+
 ## ============================ H. Backend agreement ==========================
 test_that("conjugate and normal-JAGS UNKNOWN backends agree within MC error", {
   skip_if_not(requireNamespace("rjags", quietly = TRUE), "rjags/JAGS not installed")
@@ -249,6 +289,17 @@ test_that("conjugate and normal-JAGS UNKNOWN backends agree within MC error", {
   expect_lt(res$max_rhat, 1.05)
   expect_gt(res$min_ess, 1000)
   expect_match(res$verdict, "PASS")
+})
+
+test_that("the hierarchical (partial-pooling) UNKNOWN sensitivity runs", {
+  skip_if_not(requireNamespace("rjags", quietly = TRUE), "rjags/JAGS not installed")
+  d <- mk_unknown(c(ACAC = 30, ACPL = 16, ACU = 14, PLAC = 18, PLPL = 26, PLU = 12), seed = 11)
+  b <- cgr_unknown_jags(d, grid = c(0.3, 0.5, 0.7), pooling = "partial",
+                        n_iter = 4000, n_burn = 1000, n_chains = 2)
+  expect_true(all(is.finite(b$est)))
+  expect_match(b$method[1], "pooled")
+  expect_identical(attr(b, "pooling"), "partial")
+  expect_true(all(is.finite(b$rhat)))
 })
 
 test_that("the Student-t UNKNOWN path runs and returns diagnostics", {

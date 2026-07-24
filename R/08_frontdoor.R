@@ -6,7 +6,8 @@
 # cgrc(df): the CGR-adjusted analysis of one trial in a single call. `df` needs
 # columns condition (AC/PL), guess (AC/PL) and value. direction = +1 if higher
 # scores are better, -1 if lower are better. Returns the posterior curve, a
-# summary at the observed CGR and at perfect blinding (0.50), and the observed
+# summary at the observed CGR and at a target CGR of 0.50 (guessing at chance,
+# not proof of perfect blinding), and the observed
 # CGR. The grid always includes the exact observed CGR, so the unadjusted row is
 # never read off a snapped grid point.
 # `seed` (optional): when given, set.seed(seed) is called before drawing and the
@@ -41,7 +42,8 @@ plot.cgrc <- function(x, ...) {
 # trialist has two questions the p-value conflates:
 #   * "is there an effect?"       -> P(favourable) = P(direction * Delta > 0)
 #   * "is it big enough to care?"  -> P(meaningful) = P(direction * Delta > delta)
-# Each is reported at the observed CGR (raw) and at CGR 0.50 (perfect blinding),
+# Each is reported at the observed CGR (raw) and at a target CGR 0.50 (guessing
+# at chance),
 # with the adjusted point estimate and 95% CrI. No bright-line threshold is
 # imposed - these are continuous probabilities, deliberately not turned back into
 # a "significant/not" verdict. delta defaults to 0.5 * outcome SD: half a standard

@@ -150,9 +150,13 @@ cgr_unknown_estimable <- function(st, u_target, grid, thin = 5L, warn = TRUE) {
 # with observations; a structurally zero-weight (empty) cell is given NA mu and
 # is never referenced. n_draws controls Monte Carlo precision only - it is not a
 # sample size.
+# ratio_uncertainty (Section 17E, default FALSE): when TRUE, propagate posterior
+# uncertainty in the within-class arm shares r, s, t (see cgr_unknown_ratio_draws)
+# instead of conditioning on their observed values. The default is unchanged.
 cgr_unknown_conjugate <- function(df, grid = seq(0, 1, length.out = 101),
                                   u_target = NULL, n_draws = 20000,
-                                  prior = list(), direction = 1) {
+                                  prior = list(), direction = 1,
+                                  ratio_uncertainty = FALSE, ratio_alpha = 1) {
   st <- cgr_unknown_strata(df)
   o  <- cgr_unknown_observed(st)
   u  <- if (is.null(u_target)) o$u_obs else u_target
@@ -164,8 +168,14 @@ cgr_unknown_conjugate <- function(df, grid = seq(0, 1, length.out = 101),
     else do.call(nig_draws, c(list(y = y, n_draws = n_draws), prior))
   }), UNKNOWN_STRATA)
 
-  d   <- lapply(grid, cgr_unknown_delta, u = u, mu = mu,
+  if (ratio_uncertainty) {
+    rd  <- cgr_unknown_ratio_draws(st, n_draws, ratio_alpha)
+    d   <- lapply(grid, .cgr_unknown_delta_draws, u = u, mu = mu,
+                  r = rd$r, s = rd$s, t = rd$t)
+  } else {
+    d <- lapply(grid, cgr_unknown_delta, u = u, mu = mu,
                 r = rat$r, s = rat$s, t = rat$t)
+  }
   sdv <- vapply(d, stats::sd, numeric(1))
   out <- data.frame(
     cgr = grid, method = "conjugate",
@@ -177,6 +187,38 @@ cgr_unknown_conjugate <- function(df, grid = seq(0, 1, length.out = 101),
   out$mcse <- sdv / sqrt(n_draws)
   attr(out, "u") <- u
   out
+}
+
+# Delta(c, u) over draws, allowing r/s/t to be scalars (the conditional default)
+# OR equal-length draw vectors (the ratio-uncertainty sensitivity). Internal.
+.cgr_unknown_delta_draws <- function(c, u, mu, r, s, t) {
+  w_ACAC <- (1 - u) * c * (1 - r); w_PLPL <- (1 - u) * c * r
+  w_ACPL <- (1 - u) * (1 - c) * s; w_PLAC <- (1 - u) * (1 - c) * (1 - s)
+  w_ACU  <- u * t;                 w_PLU  <- u * (1 - t)
+  term <- function(w, m) if (length(m) == 1 && is.na(m)) 0 else w * m
+  den_ac <- w_ACAC + w_ACPL + w_ACU
+  den_pl <- w_PLAC + w_PLPL + w_PLU
+  (term(w_ACAC, mu$ACAC) + term(w_ACPL, mu$ACPL) + term(w_ACU, mu$ACU)) / den_ac -
+    (term(w_PLAC, mu$PLAC) + term(w_PLPL, mu$PLPL) + term(w_PLU, mu$PLU)) / den_pl
+}
+
+# OPTIONAL sensitivity (Section 17E): posterior draws of the within-class arm
+# shares r, s, t instead of their observed point values. The original CGRC (and
+# this extension's default) CONDITIONS on r, s, t; treating them as uncertain
+# propagates binomial sampling error in the stratum composition, a different,
+# larger uncertainty statement. A share whose class has an empty arm cell is held
+# at its structural value (0 or 1), never randomised. Off by default so results
+# do not change.
+cgr_unknown_ratio_draws <- function(st, n_draws, alpha = 1) {
+  n <- lengths(st)
+  draw <- function(a, b) {
+    if (a > 0 && b > 0) stats::rbeta(n_draws, a + alpha, b + alpha)   # both cells
+    else if ((a + b) > 0) a / (a + b)                                 # structural 0/1
+    else NA_real_                                                     # empty class
+  }
+  list(r = draw(n[["PLPL"]], n[["ACAC"]]),   # placebo share of the correct class
+       s = draw(n[["ACPL"]], n[["PLAC"]]),   # active  share of the incorrect class
+       t = draw(n[["ACU"]],  n[["PLU"]]))    # active  share of the UNKNOWN class
 }
 
 # Summary at the two directional CGRs that matter: the observed directional CGR
@@ -391,3 +433,74 @@ cgrc_unknown_headline <- function(df, unknown_level = "UNKNOWN", unknown_rate = 
 }
 
 print.cgrc_unknown_headline <- function(x, ...) { cat(x$text, "\n"); invisible(x) }
+
+# EXPERIMENTAL, SEPARATE estimand (Section 17F). This is NOT the CGRC and NOT the
+# UNKNOWN-preserving CGRC extension. It standardises both arms to a single shared
+# guess distribution q over g in {AC, PL, UNKNOWN} and takes the direct,
+# within-guess-class arm contrast:
+#
+#   Delta_ind = sum_g q_g * (mu_{AC,g} - mu_{PL,g})
+#
+# with, per guess class g, the active-arm cell and the placebo-arm cell:
+#   g = AC : ACAC vs PLAC     g = PL : ACPL vs PLPL     g = UNKNOWN : ACU vs PLU
+#
+# Unlike the CGRC (which reweights CLASS MASS while preserving observed
+# within-class arm ratios), this directly targets a common guess distribution
+# across arms and therefore requires BOTH arm cells of every class with q_g > 0.
+# `q` defaults to the overall observed guess marginal. Reported as a reweighted /
+# standardised estimate, never as a causal "expectancy-removed" effect.
+cgr_unknown_independent <- function(df, q = NULL, unknown_level = "UNKNOWN",
+                                    n_draws = 20000, direction = 1, prior = list(),
+                                    seed = NULL) {
+  if (!is.null(seed)) set.seed(seed)
+  trial <- data.frame(
+    condition = cgrc_normalise_arm(df$condition, "treatment received"),
+    guess     = cgrc_normalise_guess(df$guess, allow_unknown = TRUE,
+                                     unknown_labels = unknown_level),
+    value     = as.numeric(df$value), stringsAsFactors = FALSE)
+  trial <- trial[stats::complete.cases(trial), ]
+  st <- cgr_unknown_strata(trial); n <- lengths(st); N <- sum(n)
+
+  classes <- list(AC = c("ACAC", "PLAC"), PL = c("ACPL", "PLPL"),
+                  UNKNOWN = c("ACU", "PLU"))
+  if (is.null(q))
+    q <- c(AC = (n[["ACAC"]] + n[["PLAC"]]) / N,
+           PL = (n[["ACPL"]] + n[["PLPL"]]) / N,
+           UNKNOWN = (n[["ACU"]] + n[["PLU"]]) / N)
+  q <- q / sum(q)
+
+  # every class with positive weight needs both arm cells populated
+  for (g in names(classes)) {
+    if (q[[g]] > 0 && (length(st[[classes[[g]][1]]]) == 0 ||
+                       length(st[[classes[[g]][2]]]) == 0))
+      stop("undefined for the independent estimand: guess class ", g,
+           " has an empty arm cell but q_", g, " > 0.", call. = FALSE)
+  }
+  mu <- stats::setNames(lapply(UNKNOWN_STRATA, function(nm) {
+    y <- st[[nm]]; if (length(y) == 0) NA_real_
+    else do.call(nig_draws, c(list(y = y, n_draws = n_draws), prior))
+  }), UNKNOWN_STRATA)
+
+  d <- 0
+  for (g in names(classes)) if (q[[g]] > 0) {
+    ac <- classes[[g]][1]; pl <- classes[[g]][2]
+    d <- d + q[[g]] * (mu[[ac]] - mu[[pl]])
+  }
+  eff <- direction * d; qf <- function(x, p) unname(stats::quantile(x, p))
+  structure(list(
+    method = "independent shared-guess-distribution standardisation (experimental)",
+    q = q, est = mean(d), sd = stats::sd(d),
+    lo = qf(d, 0.025), hi = qf(d, 0.975),
+    p_favourable = mean(eff > 0), direction = direction, seed = seed,
+    counts = n[UNKNOWN_STRATA], n_total = N),
+    class = "cgr_unknown_independent")
+}
+
+print.cgr_unknown_independent <- function(x, ...) {
+  cat(x$method, "\n")
+  cat(sprintf("shared guess distribution q = (AC %.3f, PL %.3f, UNKNOWN %.3f)\n",
+              x$q[["AC"]], x$q[["PL"]], x$q[["UNKNOWN"]]))
+  cat(sprintf("Delta_ind = %.3f (95%% CrI %.3f to %.3f); P(favourable) = %.3f\n",
+              x$est, x$lo, x$hi, x$p_favourable))
+  invisible(x)
+}

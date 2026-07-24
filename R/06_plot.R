@@ -46,9 +46,9 @@ cgr_plot <- function(cur, obs_cgr, title = NULL,
     ggplot2::scale_x_continuous(breaks = c(0, 0.25, 0.5, 0.75, 1)) +
     ggplot2::labs(x = "Correct guess rate (CGR)", y = NULL,
                   colour = NULL, fill = NULL, title = title,
-                  subtitle = sprintf(paste("black dashed = perfect blinding",
-                                           "(0.50); green dashed = observed",
-                                           "CGR (%.3f)"), obs_cgr)) +
+                  subtitle = sprintf(paste("black dashed = target CGR 0.50",
+                                           "(guessing at chance); green dashed =",
+                                           "observed CGR (%.3f)"), obs_cgr)) +
     ggplot2::theme_minimal(base_size = 15) +
     ggplot2::theme(strip.placement = "outside",
                    panel.grid.minor = ggplot2::element_blank(),
@@ -180,7 +180,7 @@ cgr_summary_table <- function(cur, obs_cgr, label = "", tol = 1e-6) {
   data.frame(
     outcome = label,
     cgr = c(round(obs_cgr, 4), 0.5),
-    what = c("observed (unadjusted)", "perfect blinding (adjusted)"),
+    what = c("observed (unadjusted)", "reweighted to CGR 0.50 (adjusted)"),
     post_mean = round(c(a$est, h$est), 3),
     cri_lo = round(c(a$lo, h$lo), 3),
     cri_hi = round(c(a$hi, h$hi), 3),
