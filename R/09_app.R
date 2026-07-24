@@ -106,6 +106,45 @@ cgrc_normalise_arm <- function(x, what = "value") {
   out
 }
 
+# Normalise a GUESS coding to "AC"/"PL"/"UNKNOWN". Unlike cgrc_normalise_arm(),
+# this optionally recognises an explicit UNKNOWN / "I do not know" response and
+# keeps missing data (NA or blank) as missing - an observed UNKNOWN response and
+# absent data are different things and must not be conflated. Unrecognised values
+# error, naming the offending labels, rather than being guessed. When
+# allow_unknown = FALSE an UNKNOWN synonym is treated as unrecognised (rejected
+# explicitly), so the caller cannot silently admit UNKNOWN into a binary analysis.
+cgrc_normalise_guess <- function(x, allow_unknown = FALSE, unknown_labels = NULL,
+                                 what = "treatment guessed") {
+  raw <- as.character(x)
+  s <- toupper(trimws(raw))
+  # normalise apostrophe variants to a plain ' with fixed byte replacement so this
+  # works in a C locale too, where a multibyte regex character class fails. \u
+  # escapes keep the source pure-ASCII; useBytes avoids any locale translation.
+  for (ap in c("\u2019", "\u02bc", "\u2018", "`"))
+    s <- gsub(ap, "'", s, fixed = TRUE, useBytes = TRUE)
+  s <- gsub("[[:space:]]+", " ", s)             # collapse internal whitespace
+  active  <- c("AC", "MD", "ACTIVE", "DRUG", "MICRODOSE", "TREATMENT",
+               "TRUE", "T", "1", "YES", "Y")
+  placebo <- c("PL", "PLACEBO", "CONTROL", "SHAM", "FALSE", "F", "0", "NO", "N")
+  unknown <- c("UNKNOWN", "UNSURE", "UNCERTAIN", "NOT SURE", "DO NOT KNOW",
+               "DON'T KNOW", "DID NOT KNOW", "I DO NOT KNOW", "I DON'T KNOW",
+               "DK", "IDK",
+               toupper(trimws(as.character(unknown_labels))))
+  missing <- is.na(raw) | s == ""               # NA / blank stay missing, never UNKNOWN
+  out <- rep(NA_character_, length(s))
+  out[s %in% active]  <- "AC"
+  out[s %in% placebo] <- "PL"
+  if (allow_unknown) out[s %in% unknown] <- "UNKNOWN"
+  out[missing] <- NA_character_
+  bad <- unique(raw[!missing & is.na(out)])      # present, but mapped to nothing
+  if (length(bad)) {
+    hint <- if (allow_unknown) "AC/PL or an UNKNOWN response" else "AC/PL (active/placebo)"
+    stop(sprintf("could not map %s level(s) %s to %s; recode them.",
+                 what, paste(shQuote(bad), collapse = ", "), hint), call. = FALSE)
+  }
+  out
+}
+
 # Should pct_attenuation be shown? No when the unadjusted estimate is not
 # distinguishable from zero (its CrI includes 0) or when adjusted and unadjusted
 # have opposite signs (the ratio is then > 100% and meaningless, e.g. "146.9%").
