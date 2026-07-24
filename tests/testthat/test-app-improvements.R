@@ -11,9 +11,13 @@
 # Helper-level tests need no shiny; the server-level test skips when the package
 # is not installed (it runs under devtools::test()/R CMD check, which install it).
 
-# Locate inst/app/app.R whether tests run from tests/testthat/ or the repo root.
+# Locate the app source whether tests run from tests/testthat/, the repo root, or
+# an installed package (R CMD check runs from <pkg>.Rcheck/tests/, where only the
+# installed copy under system.file("app") exists).
 app_src_path <- function() {
-  for (p in c("../../inst/app/app.R", "inst/app/app.R")) if (file.exists(p)) return(p)
+  cands <- c("../../inst/app/app.R", "inst/app/app.R",
+             system.file("app", "app.R", package = "cgrc.bayes"))
+  for (p in cands) if (nzchar(p) && file.exists(p)) return(p)
   "inst/app/app.R"
 }
 
