@@ -41,8 +41,9 @@ test_that("cgrc_power_curve returns the DTE-on/AEB-off row over n", {
 test_that("cgrc_verdict states both criteria and does not pronounce safety", {
   v <- cgrc_verdict(mk_lut(), n = 200, p_cg = 0.6, true_effect = 3)
   expect_type(v, "character")
-  expect_match(v, "P>0.95")   # names the Bayesian criterion (adjusted)
-  expect_match(v, "p<0.05")   # names the frequentist criterion (unadjusted)
+  expect_match(v, "P(favourable)>0.95", fixed = TRUE)  # standard Bayesian threshold (adjusted)
+  expect_match(v, "p<0.05")                            # frequentist criterion (unadjusted)
+  expect_match(v, "P>0.975", fixed = TRUE)             # points to the stricter trade-off threshold
   expect_match(v, "%")
   # the tool states numbers, it does not pronounce a design safe/unsafe
   expect_false(grepl("safe|unsafe|acceptable", v, ignore.case = TRUE))

@@ -146,20 +146,23 @@ cgrc_unknown_verdict <- function(lut, n, p_cg, true_effect, u) {
     minstr) else ""
   if (true_effect == 0) {
     sprintf(paste0("UNKNOWN-preserving design at n=%d, directional CGR %.0f%%, ",
-      "UNKNOWN rate %.0f%%, no true effect: when the apparent signal is pure ",
-      "expectancy, the naive analysis reaches p<0.05 in %.0f%% of simulated ",
-      "trials, while the UNKNOWN-adjusted analysis reaches posterior P>0.95 in ",
-      "%.0f%%.%s"),
-      n, 100 * p_cg, 100 * u, 100 * fp$freq_sig, 100 * fp$p_fav_gt_95, feas)
+      "UNKNOWN rate %.0f%%, no true effect, using the standard reporting threshold ",
+      "posterior P(favourable)>0.95: when the apparent signal is pure expectancy, ",
+      "the UNKNOWN-adjusted analysis flags an effect in %.0f%% of simulated trials ",
+      "(false treatment attribution), versus %.0f%% for an unadjusted, direction-",
+      "filtered p<0.05. The trade-off plot below uses the stricter P>0.975.%s"),
+      n, 100 * p_cg, 100 * u, 100 * fp$p_fav_gt_95, 100 * fp$freq_sig, feas)
   } else {
     pw <- cgrc_unknown_op_at(lut, n, p_cg, true_effect, u, 1, 0)   # clean power
     sprintf(paste0("UNKNOWN-preserving design at n=%d, directional CGR %.0f%%, ",
-      "UNKNOWN rate %.0f%%: for a real %.1f-point effect the UNKNOWN-adjusted ",
-      "analysis reaches posterior P>0.95 in %.0f%% of simulated trials. When the ",
-      "apparent effect is instead pure expectancy, the naive analysis reaches ",
-      "p<0.05 in %.0f%% and the adjusted analysis in %.0f%%.%s"),
+      "UNKNOWN rate %.0f%%, using the standard reporting threshold posterior ",
+      "P(favourable)>0.95: for a real %.1f-point effect the UNKNOWN-adjusted ",
+      "analysis flags the effect in %.0f%% of simulated trials (its power). When ",
+      "the apparent effect is instead pure expectancy it flags an effect in %.0f%% ",
+      "(false treatment attribution), versus %.0f%% for an unadjusted, direction-",
+      "filtered p<0.05. The trade-off plot below uses the stricter P>0.975.%s"),
       n, 100 * p_cg, 100 * u, true_effect, 100 * pw$p_fav_gt_95,
-      100 * fp$freq_sig, 100 * fp$p_fav_gt_95, feas)
+      100 * fp$p_fav_gt_95, 100 * fp$freq_sig, feas)
   }
 }
 
@@ -546,20 +549,24 @@ cgrc_verdict <- function(lut, n, p_cg, true_effect, mu_aeb = 7.7) {
            "estimand can be undefined for some trials - see the feasibility ",
            "readout.)"), minstr) else ""
   if (true_effect == 0) {
-    sprintf(paste0("At n=%d with %.0f%% correct guessing and no true effect: ",
-      "when the apparent signal is pure expectancy, an unadjusted analysis ",
-      "reaches p<0.05 in %.0f%% of simulated trials, while the CGR-adjusted ",
-      "analysis reaches posterior P>0.95 in %.0f%%.%s"),
-      n, 100 * p_cg, 100 * fp$freq_sig, 100 * fp$p_fav_gt_95, feas)
+    sprintf(paste0("At n=%d with %.0f%% correct guessing and no true effect, using ",
+      "the standard reporting threshold posterior P(favourable)>0.95: when the ",
+      "apparent signal is pure expectancy, the CGR-adjusted analysis flags an ",
+      "effect in %.0f%% of simulated trials (false treatment attribution), versus ",
+      "%.0f%% for an unadjusted, direction-filtered p<0.05. The trade-off plot ",
+      "below uses the stricter P>0.975, so its rates are lower.%s"),
+      n, 100 * p_cg, 100 * fp$p_fav_gt_95, 100 * fp$freq_sig, feas)
   } else {
     pw <- cgrc_op_at(lut, n, p_cg, true_effect, 1, 0, mu_aeb)  # clean power
-    sprintf(paste0("At n=%d with %.0f%% correct guessing: for a real %.1f-point ",
-      "effect the CGR-adjusted analysis reaches posterior P>0.95 in %.0f%% of ",
-      "simulated trials. When the apparent effect is instead pure expectancy, ",
-      "an unadjusted analysis reaches p<0.05 in %.0f%% of trials and the ",
-      "adjusted analysis in %.0f%%. Weigh that trade-off against your own ",
-      "priorities.%s"),
+    sprintf(paste0("At n=%d with %.0f%% correct guessing, using the standard ",
+      "reporting threshold posterior P(favourable)>0.95: for a real %.1f-point ",
+      "effect the CGR-adjusted analysis flags the effect in %.0f%% of simulated ",
+      "trials (its power). When the apparent effect is instead pure expectancy it ",
+      "flags an effect in %.0f%% (false treatment attribution), versus %.0f%% for ",
+      "an unadjusted, direction-filtered p<0.05. The trade-off plot below uses the ",
+      "stricter P>0.975, so its power and attribution rates are lower. Weigh that ",
+      "trade-off against your own priorities.%s"),
       n, 100 * p_cg, true_effect, 100 * pw$p_fav_gt_95,
-      100 * fp$freq_sig, 100 * fp$p_fav_gt_95, feas)
+      100 * fp$p_fav_gt_95, 100 * fp$freq_sig, feas)
   }
 }
