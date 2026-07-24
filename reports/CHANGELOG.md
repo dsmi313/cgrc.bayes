@@ -294,6 +294,25 @@ CGR-curve CSV, a plot PNG, and a self-contained HTML report. New testable helper
 `cgr_expected_strata()`, `cgr_guess_rates()`, `cgrc_reliability()`,
 `cgrc_analysis_summary()`, `cgrc_build_html_report()`.
 
+### CH-27  One Bayesian criterion throughout; both trade-off bars Bayesian  [additive column]
+**Was:** the trade-off plot pitched a Bayesian adjusted flag against a frequentist
+t-test bar, and CH-25/26 experimented with a direction-matched two-sided p<0.05
+and a P>0.975 comparator.
+**Now:** every user-facing adjusted or unadjusted "flag"/"power" quantity uses the
+SAME Bayesian criterion, posterior `P(favourable) > 0.95` — headline, power curve,
+trade-off plot, operating table, exact simulation, binary and UNKNOWN modes. The
+trade-off plot compares two BAYESIAN posteriors: the unadjusted raw active-minus-
+placebo contrast vs the CGRC-adjusted Delta at CGR 0.50. `cgr_operating()` and
+`cgr_unknown_operating()` gained an `unadj_p_fav_gt_95` column for the unadjusted
+Bayesian flag, computed on a saved/restored RNG stream so every pre-existing column
+is byte-identical. `freq_sig` reverts to the conventional TWO-SIDED t-test and is
+kept only as a labelled reference reported in the text under the plot ("Frequentist
+reference: … p<0.05 occurred in X% of pure-expectancy simulations"), never plotted
+beside the Bayesian bars. The Bayesian and frequentist criteria are no longer
+called "matched" or "equivalent". `p_fav_gt_975` is retained in the simulation
+output for research/sensitivity use but is not shown anywhere in the app. Both
+lookups were rebuilt to add `unadj_p_fav_gt_95`; all other columns are unchanged.
+
 ## Preserved unchanged
 
 - The estimand: strata, r, s, weights, Delta(c).

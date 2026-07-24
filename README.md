@@ -81,12 +81,14 @@ reliability category rather than a binary safe/unsafe verdict — *reliable unde
 simulated conditions*, *use with caution*, *fragile design*, or *adjustment
 undefined in many simulated trials*. It shows a power-vs-n curve, the
 false-treatment-attribution/power trade-off with and without adjustment (a real
-observed arm difference driven by expectancy when the direct effect is zero), an
-operating-characteristics table reporting **both** the standard one-sided Bayesian
-flag `P(favourable) > 0.95` and the approximately direction-matched comparator
-`P > 0.975` (a rough Bayesian-tail comparator to a *direction-filtered two-sided*
-`p < 0.05` — a two-sided test kept only when the estimate is in the prespecified
-favourable direction, ≈0.025 in that tail under the null),
+observed arm difference driven by expectancy when the direct effect is zero), and
+an operating-characteristics table. **One Bayesian criterion is used throughout —
+`P(favourable) > 0.95`** — for the headline, the power curve, the trade-off plot
+(comparing the *unadjusted* Bayesian raw-contrast posterior against the
+*CGRC-adjusted* posterior at CGR 0.50), the operating table, and the exact
+simulation, in both binary and UNKNOWN modes. The conventional two-sided t-test is
+retained only as a clearly-labelled frequentist *reference* reported in the text
+below the plot, never plotted beside the Bayesian bars. There is also
 a feasibility readout listing **all four** expected stratum sizes and the stated
 design assumptions, and a button to run the exact simulation at your settings —
 whose results are shown side by side with the interpolated lookup and overlaid on
