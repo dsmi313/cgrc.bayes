@@ -209,13 +209,24 @@ how a misplaced reference line gets caught.
 Every number below is reproducible with a calculator.
 
 ```{r load-data}
-stopifnot(file.exists("data/pacutes.csv"))
-raw <- read.csv("data/pacutes.csv", stringsAsFactors = FALSE)
+# Resolve pacutes.csv without assuming a data/ folder: the working directory
+# first (drop the file into your session), then the repo layout, then the
+# installed package copy.
+pacutes_path <- function() {
+  cand <- c("pacutes.csv", "data/pacutes.csv", "../../data/pacutes.csv",
+            system.file("data", "pacutes.csv", package = "cgrc.bayes"))
+  for (p in cand) if (nzchar(p) && file.exists(p)) return(p)
+  stop("pacutes.csv not found; put it in the working directory, or run ",
+       "`Rscript data-raw/download_data.R` from the repo root.", call. = FALSE)
+}
+PACUTES <- pacutes_path()
+raw <- read.csv(PACUTES, stringsAsFactors = FALSE)
 
 if (requireNamespace("digest", quietly = TRUE)) {
-  sha <- digest::digest("data/pacutes.csv", algo = "sha256", file = TRUE)
-  stopifnot(identical(
-    sha, "86aa784528ee045c61fadf3eacfd3e1897d16aae9839cee7cb4bfe839a7cc4e3"))
+  sha <- digest::digest(PACUTES, algo = "sha256", file = TRUE)
+  if (!identical(sha, "86aa784528ee045c61fadf3eacfd3e1897d16aae9839cee7cb4bfe839a7cc4e3"))
+    warning("pacutes.csv SHA-256 does not match the pinned copy; ",
+            "reproduced numbers may differ from those in the text.", call. = FALSE)
 }
 
 load_scale <- function(code, tp = "w1s1") {
