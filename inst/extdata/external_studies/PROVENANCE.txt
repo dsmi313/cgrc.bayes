@@ -1,0 +1,41 @@
+External-trial datasets for the vignette's "External validation" section
+========================================================================
+
+Three independent, publicly archived randomized trials, prepared for cgrc.bayes
+as condition (AC/PL) / guess (AC/PL/UNKNOWN) / outcome tables. Prepared and
+audited in cgrc_external_studies_summary (uploaded 2026-07-24). These are
+third-party data reproduced from public archives; cgrc.bayes is independent of
+and not endorsed by the original authors. Cite the original papers and archives.
+
+cavanna_cgrc.csv  (binary)
+  Cavanna F, et al. (2022) "Microdosing with psilocybin mushrooms: A double-blind
+  placebo-controlled study." Translational Psychiatry 12:307.
+  doi:10.1038/s41398-022-02039-0   Data: doi:10.5281/zenodo.5745892
+  - 34 participants, Week 1 only (avoids the crossover's repeated measures).
+  - treatment_guessed is RECONSTRUCTED from a correctness indicator under a
+    forced active-vs-placebo choice assumption (guessed = received when the
+    unblind flag = correct). Strata 11/7/8/8; observed CGR 19/34 = 0.559.
+  - Recommended outcome: mood/well-being; dosing-day acute-effect VAS as a
+    positive control. Caveat: a genuine subjective drug effect may itself drive
+    treatment recognition, so attenuation is not automatically de-biasing.
+
+santana_cgrc_unk.csv  (UNKNOWN)
+  Santana-Penin U, et al. (2023) "Remodeling dental anatomy vs sham therapy for
+  chronic temporomandibular disorders." Annals of Anatomy 250:152117.
+  doi:10.1016/j.aanat.2023.152117   Data: doi:10.5061/dryad.zkh189370
+  - 77 participants. Assignment awareness at 6 months: real therapy / I do not
+    know / placebo therapy -> AC / UNKNOWN / PL. Six strata 26/1/12/21/3/14;
+    26 (33.8%) UNKNOWN; directional CGR 29/51 = 0.569.
+  - Outcome: pain_improvement_6m_itt = baseline pain - 6-month ITT pain (0-10
+    scale; higher = more improvement; README MID = 1.5 points).
+
+ketamine_cgrc_unk.csv  (UNKNOWN)
+  Lii TR, et al. (2023) "Randomized trial of ketamine masked by surgical
+  anesthesia in patients with depression." Nature Mental Health 1:876-886.
+  doi:10.1038/s44220-023-00140-x   Data: doi:10.17605/OSF.IO/ZDKR8
+  - 38 participants with a recorded Closeout treatment belief (2 lacking a
+    belief are excluded). ketamine / placebo / did not know -> AC / PL / UNKNOWN.
+    Six strata 9/5/5/8/5/6; directional CGR 14/27 = 0.519 (near chance).
+  - Outcome: madrs_mean_day1_3 = mean MADRS across Days 1-3 (lower = better, so
+    the analysis uses direction = -1). A project-specific scalar summary, not a
+    longitudinal mixed model.

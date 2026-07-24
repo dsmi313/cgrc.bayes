@@ -1410,6 +1410,233 @@ repository README; this section is only the front door.
 
 ---
 
+# External validation: three independent trials
+
+The microdose data above are the study this method was built on. To see how the
+tool behaves on *other* trials — and to exercise the UNKNOWN-preserving extension
+on real "I do not know" responses — this section runs three further public,
+audited datasets through exactly the pipeline the Shiny app's *Analyse your own
+trial* panel uses: an input audit, then either the binary four-stratum `cgrc()`
+or the six-stratum `cgrc_unknown()` when UNKNOWN guesses are present. Provenance,
+transformations and per-study caveats are in
+`inst/extdata/external_studies/PROVENANCE.txt`; the counts below reproduce the
+shipped audit summary.
+
+| Trial | Design | Guess structure | Outcome (direction) |
+|---|---|---|---|
+| Cavanna et al. (2022) | psilocybin microdosing | binary (reconstructed) | well-being; dosing-day VAS positive control (higher = better) |
+| Santana-Penín et al. (2023) | sham dental therapy | AC / PL / UNKNOWN | 6-month ITT pain improvement, MID 1.5 (higher = better) |
+| Lii et al. (2023) | ketamine masked by anaesthesia | AC / PL / UNKNOWN | mean MADRS Days 1–3 (lower = better) |
+
+```{r ext-setup}
+# Resolve a shipped dataset whether the vignette renders from the repo root or
+# from an installed package.
+read_ext <- function(f) {
+  cand <- c(file.path("inst/extdata/external_studies", f),
+            system.file("extdata", "external_studies", f, package = "cgrc.bayes"))
+  for (p in cand) if (nzchar(p) && file.exists(p))
+    return(utils::read.csv(p, stringsAsFactors = FALSE))
+  stop("external study file not found: ", f)
+}
+
+# Mirror the app's *Analyse your own trial* panel: audit every row, then run the
+# binary or the UNKNOWN-preserving analysis. `force_binary` reproduces the
+# complete-case path (UNKNOWN responses excluded) for contrast.
+app_analyse <- function(df, condc, guessc, valc, direction = 1, delta = NULL,
+                        delta_sd_frac = 0.5, force_binary = FALSE, n_draws = 8000) {
+  aud   <- cgrc_input_audit(df[[condc]], df[[guessc]], df[[valc]])
+  clean <- aud$clean
+  mode  <- if (aud$has_unknown && !force_binary) "unknown" else "binary"
+  if (mode == "binary") clean <- clean[clean$guess %in% c("AC", "PL"), , drop = FALSE]
+  d <- if (!is.null(delta)) delta else delta_sd_frac * stats::sd(clean$value)
+  fit <- if (mode == "unknown")
+           cgrc_unknown(clean, n_draws = n_draws, direction = direction, seed = 1)
+         else cgrc(clean, n_draws = n_draws, direction = direction, seed = 1)
+  hd  <- if (mode == "unknown")
+           cgrc_unknown_headline(clean, direction = direction, delta = d, n_draws = n_draws, seed = 1)
+         else cgrc_headline(clean, direction = direction, delta = d, n_draws = n_draws, seed = 1)
+  list(mode = mode, audit = aud, trial = clean, dir = direction, delta = d, fit = fit, head = hd)
+}
+
+# the app's Panel B CGR curve (effect + P(favourable) facets)
+app_curve <- function(a, label) {
+  if (a$mode == "unknown") {
+    cgr_unknown_plot(a$fit$curve, obs_cgr = a$fit$observed_directional_cgr,
+                     u = a$fit$target_unknown_rate, direction_label = label)
+  } else {
+    cgr_plot(a$fit$curve, obs_cgr = a$fit$observed_cgr, direction_label = label)
+  }
+}
+
+# the app's compact "at a glance" summary
+app_summary <- function(a) {
+  s   <- a$fit$summary
+  ocg <- if (a$mode == "unknown") a$fit$observed_directional_cgr else a$fit$observed_cgr
+  pct <- function(p) sprintf("%.0f%%", 100 * p)
+  data.frame(
+    Quantity = c("Analysed n", "Observed correct-guess rate",
+                 "Raw effect (at observed CGR)", "Adjusted effect (CGR 0.50)",
+                 "Adjusted 95% CrI", "P(favourable): raw → adjusted",
+                 sprintf("P(exceeds %.3g-unit threshold): raw → adjusted", a$delta)),
+    Value = c(as.character(nrow(a$trial)), sprintf("%.3f", ocg),
+              sprintf("%.2f", s$post_mean[1]), sprintf("%.2f", s$post_mean[2]),
+              sprintf("[%.2f, %.2f]", s$cri_lo[2], s$cri_hi[2]),
+              paste(pct(s$p_favourable[1]), "→", pct(s$p_favourable[2])),
+              paste(pct(a$head$p_meaningful_obs), "→", pct(a$head$p_meaningful_blind))),
+    check.names = FALSE)
+}
+```
+
+## Cavanna et al. (2022): psilocybin microdosing — binary
+
+A 34-participant double-blind crossover; Week 1 only is used, giving one record
+per participant. The treatment guess is *reconstructed* from a correctness
+indicator under a forced active-vs-placebo choice, so read this as an
+illustration of the binary path on an independent trial rather than a definitive
+re-analysis. All four strata are populated.
+
+```{r ext-cavanna}
+cav     <- read_ext("cavanna_cgrc.csv")
+cav_wb  <- app_analyse(cav, "treatment_received", "treatment_guessed",
+                       "psychological_wellbeing", direction = 1)
+cav_vas <- app_analyse(cav, "treatment_received", "treatment_guessed",
+                       "vas_dose_days", direction = 1)
+st <- cgr_strata(cav_wb$trial); gr <- cgr_guess_rates(cav_wb$trial)
+knitr::kable(data.frame(stratum = STRATA, n = lengths(st)[STRATA]),
+  caption = sprintf("Cavanna Week-1 strata; observed CGR %.3f (active-arm %.0f%%, placebo-arm %.0f%% correct)",
+                    cav_wb$fit$observed_cgr, 100 * gr$active, 100 * gr$placebo))
+```
+
+```{r ext-cavanna-wellbeing, fig.height=6.5}
+knitr::kable(app_summary(cav_wb), caption = "Cavanna — psychological well-being (higher is better)")
+app_curve(cav_wb, "positive (higher well-being)")
+```
+
+```{r ext-cavanna-vas, fig.height=6.5}
+knitr::kable(app_summary(cav_vas), caption = "Cavanna — dosing-day acute-effect VAS (positive control)")
+app_curve(cav_vas, "positive (stronger acute effect)")
+```
+
+Well-being shows nothing to adjust: a raw active-minus-placebo difference near
+zero with P(favourable) only `r round(100 * cav_wb$head$p_dir_obs)`%, essentially
+unchanged at perfect blinding (`r round(100 * cav_wb$head$p_dir_blind)`%). The
+dosing-day VAS — the positive control — is the opposite: a raw effect of
+`r round(cav_vas$fit$summary$post_mean[1], 1)` points with P(favourable)
+`r round(100 * cav_vas$head$p_dir_obs)`%, and it *survives* CGR adjustment
+(`r round(100 * cav_vas$head$p_dir_blind)`% at CGR 0.50). A real acute
+pharmacological signal that reweighting does not explain away — but note the
+primary caveat: a genuine acute effect can itself drive the correct guess, so
+here low attenuation is *expected* and is not by itself evidence that expectancy
+was absent.
+
+## Santana-Penín et al. (2023): sham-controlled dental therapy — UNKNOWN
+
+77 adults with chronic temporomandibular pain; assignment awareness at six months
+was recorded as *real therapy*, *I do not know*, or *placebo therapy*. Positive
+`pain_improvement_6m_itt` means improvement, and the README fixes the clinically
+important difference at 1.5 points.
+
+```{r ext-santana}
+san_df  <- read_ext("santana_cgrc_unk.csv")
+san     <- app_analyse(san_df, "treatment_received", "treatment_guessed",
+                       "pain_improvement_6m_itt", direction = 1, delta = 1.5)
+san_bin <- app_analyse(san_df, "treatment_received", "treatment_guessed",
+                       "pain_improvement_6m_itt", direction = 1, delta = 1.5,
+                       force_binary = TRUE)
+us <- cgr_unknown_strata(san$trial)
+knitr::kable(data.frame(stratum = UNKNOWN_STRATA, n = lengths(us)[UNKNOWN_STRATA]),
+  caption = sprintf("Santana six strata; %d UNKNOWN of %d (%.0f%%), directional CGR %.3f",
+    san$fit$n_unknown, san$fit$n_total, 100 * san$fit$observed_unknown_rate,
+    san$fit$observed_directional_cgr))
+```
+
+```{r ext-santana-result, fig.height=6.5}
+knitr::kable(app_summary(san), caption = "Santana — 6-month ITT pain improvement, UNKNOWN preserved (MID 1.5)")
+app_curve(san, "favourable (pain improvement)")
+```
+
+This is the clearest case for the UNKNOWN extension. `r san$fit$n_unknown` of
+`r san$fit$n_total` participants (`r round(100 * san$fit$observed_unknown_rate)`%)
+answered "I do not know." Forcing the binary complete-case analysis keeps only
+`r nrow(san_bin$trial)` participants and leaves an active/placebo-guess stratum of
+a single person — and it does not merely discard data, it *distorts* the estimate:
+the complete-case adjusted effect is
+`r round(san_bin$fit$summary$post_mean[2], 2)` points, against
+`r round(san$fit$summary$post_mean[2], 2)` when UNKNOWN is preserved across all
+77. Preserving UNKNOWN, the reweighted pain benefit is favourable with P(favourable)
+essentially 100%, and barely moves from the raw estimate
+(`r round(san$fit$summary$post_mean[1], 2)` → `r round(san$fit$summary$post_mean[2], 2)`)
+because the directional CGR (`r round(san$fit$observed_directional_cgr, 3)`) is
+already close to 0.5. The decision-relevant number is the probability the effect
+clears the 1.5-point MID: `r round(100 * san$head$p_meaningful_obs)`% raw →
+`r round(100 * san$head$p_meaningful_blind)`% adjusted — a real, favourable effect
+sitting right at the edge of clinical importance.
+
+## Lii et al. (2023): ketamine masked by surgical anaesthesia — UNKNOWN
+
+40 depressed patients received ketamine or placebo *under surgical anaesthesia*,
+so neither could feel the infusion; treatment belief was recorded at Closeout as
+*ketamine*, *placebo*, or *did not know*. The scalar outcome is mean MADRS across
+Days 1–3, where **lower is better**, so the analysis uses `direction = -1`.
+
+```{r ext-ketamine}
+ket_df <- read_ext("ketamine_cgrc_unk.csv")
+ket <- app_analyse(ket_df, "treatment_received", "treatment_guessed",
+                   "madrs_mean_day1_3", direction = -1)
+uk <- cgr_unknown_strata(ket$trial)
+knitr::kable(data.frame(stratum = UNKNOWN_STRATA, n = lengths(uk)[UNKNOWN_STRATA]),
+  caption = sprintf("Lii six strata; directional CGR %.3f (near chance), %d UNKNOWN of %d",
+    ket$fit$observed_directional_cgr, ket$fit$n_unknown, ket$fit$n_total))
+```
+
+```{r ext-ketamine-result, fig.height=6.5}
+knitr::kable(app_summary(ket), caption = "Lii / ketamine — mean MADRS Days 1-3 (lower is better; direction = -1)")
+app_curve(ket, "favourable (lower MADRS)")
+```
+
+Guessing here is near chance (directional CGR
+`r round(ket$fit$observed_directional_cgr, 3)`): masked by anaesthesia, patients
+could not tell ketamine from placebo. That is exactly the regime where CGR
+adjustment *should* do almost nothing — and it does. The raw MADRS advantage of
+`r round(ket$fit$summary$post_mean[1], 1)` points (favourable = lower) barely
+moves to `r round(ket$fit$summary$post_mean[2], 1)` at perfect blinding, with
+P(favourable) `r round(100 * ket$head$p_dir_obs)`% →
+`r round(100 * ket$head$p_dir_blind)`%. Here the CGRC is *confirmatory*: because
+blinding held, the modest antidepressant signal is not an expectancy artefact —
+and with all six strata populated, the reweighting is well-defined rather than
+resting on a thin cell.
+
+## What the three trials add
+
+- **Cavanna** is a clean binary example with all four strata populated. Its
+  positive-control VAS shows a real drug effect that survives adjustment while its
+  well-being outcome is null, and it carries the reconstructed-guess and
+  effect-drives-guessing caveats explicitly.
+- **Santana** is the strongest case for preserving UNKNOWN: a third of the sample
+  answered "I do not know," and complete-case restriction both strands them and
+  distorts the estimate through a one-person stratum. The extension keeps the
+  whole trial and finds a favourable pain effect at the clinical MID.
+- **Lii** is the near-chance case: adjustment barely changes anything, which is
+  the correct behaviour when blinding held, and it exercises the fully-populated
+  six-stratum estimand.
+
+Across all three, the behaviour is what the method predicts: CGR adjustment moves
+the estimate most when guessing departs from chance and the wrong-guess strata
+are populated, and does little when guessing is near chance — while the
+UNKNOWN-preserving variant keeps usable the trials the binary method would either
+distort through a near-empty stratum or discard through complete-case exclusion.
+None of these is a definitive re-analysis of the source trial; each is an
+illustration of the tool on independent, audited data, subject to the per-study
+caveats above and in `PROVENANCE.txt`.
+
+**Data sources for this section.** Cavanna F, et al. (2022) *Transl. Psychiatry*
+12:307 (data doi:10.5281/zenodo.5745892); Santana-Penín U, et al. (2023) *Ann.
+Anat.* 250:152117 (data doi:10.5061/dryad.zkh189370); Lii TR, et al. (2023)
+*Nat. Mental Health* 1:876–886 (data doi:10.17605/OSF.IO/ZDKR8). cgrc.bayes is
+independent of and not endorsed by these authors.
+
+---
+
 # Unresolved questions
 
 1. **Corrected JAGS prior.** `r jags_resolution`
