@@ -287,23 +287,45 @@ probability. Open questions and the source-paper checks behind them are in
 
 ## Sources
 
-Full details and per-finding citations are in `reports/SOURCES.md`.
+The four references below play distinct roles; only the first two underpin the
+package. Full details and per-finding citations are in `reports/SOURCES.md`.
 
-- Szigeti B, Nutt D, Carhart-Harris R, Erritzoe D. "The difference between
+**Primary methodological source** — the original CGRC method paper reproduced by
+`cgrc.bayes`:
+
+- Szigeti B, Nutt D, Carhart-Harris R, Erritzoe D. 2023. "The difference between
   'placebo group' and 'placebo control': a case study in psychedelic
-  microdosing." *Scientific Reports* 13:12107 (2023).
-  <https://doi.org/10.1038/s41598-023-34938-7> — **the method paper reproduced
-  here.**
-- Szigeti B, Weiss B, Rosas FE, Erritzoe D, Nutt D, Carhart-Harris R. "Assessing
-  expectancy and suggestibility in a trial of escitalopram v. psilocybin for
-  depression." *Psychological Medicine* 54, 1717–1724 (2024).
+  microdosing." *Scientific Reports* 13:12107.
+  <https://doi.org/10.1038/s41598-023-34938-7>
+
+  The binary CGRC estimand, the activated-expectancy-bias (AEB) framework, the
+  correct-guess-rate curves, and the empirical reproduction here are all based on
+  this work.
+
+**Empirical dataset** — the source study for the public data reanalysed here:
+
+- Szigeti B, et al. 2021. "Self-blinding citizen science to explore psychedelic
+  microdosing." *eLife* 10:e62878. <https://doi.org/10.7554/eLife.62878>
+
+  Provides the public dataset shipped as `data/pacutes.csv`; the package pins a
+  checksum-verified copy of these data for reproducibility (see `PROVENANCE.txt`).
+
+**Supporting literature** — contextual, *not* a methodological source for CGRC:
+
+- Szigeti B, Heifets BD. 2024. "Expectancy Effects in Psychedelic Trials."
+  *Biological Psychiatry: Cognitive Neuroscience and Neuroimaging* 9:512–521.
+  <https://doi.org/10.1016/j.bpsc.2024.02.004>
+
+  Supports interpretation of expectancy effects, blinding failure, and the
+  approximate correct-guess rates discussed in the documentation.
+
+**Related expectancy literature** — context only; does not provide the CGRC
+method or the data used by the package:
+
+- Szigeti B, Weiss B, Rosas FE, Erritzoe D, Nutt D, Carhart-Harris R. 2024.
+  "Assessing expectancy and suggestibility in a trial of escitalopram v.
+  psilocybin for depression." *Psychological Medicine* 54:1717–1724.
   <https://doi.org/10.1017/S0033291723003653>
-- Szigeti B, Heifets BD. "Expectancy Effects in Psychedelic Trials."
-  *Biological Psychiatry: Cognitive Neuroscience and Neuroimaging* 9:512–521
-  (2024). <https://doi.org/10.1016/j.bpsc.2024.02.004>
-- Public dataset: Szigeti B, et al. "Self-blinding citizen science to explore
-  psychedelic microdosing." *eLife* 10:e62878 (2021).
-  <https://doi.org/10.7554/eLife.62878>
 
 This project reproduces and re-analyses published work; it is independent of and
 not endorsed by the original authors.

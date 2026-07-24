@@ -1,10 +1,25 @@
 # Sources
 
-The primary and secondary literature this project reproduces and cites. The PDFs
-themselves are copyrighted journal articles and are **not** committed to the
-repo; cite them by DOI. Read 2026-07-21.
+The literature this project reproduces and cites. The PDFs themselves are
+copyrighted journal articles and are **not** committed to the repo; cite them by
+DOI. Read 2026-07-21.
 
-## S1 — the CGRC method paper (primary)
+**Source roles at a glance** (only the first two underpin the package):
+
+1. **Primary methodological source** — Szigeti et al. 2023, *Sci Rep* (S1 below):
+   the CGRC method reproduced here.
+2. **Empirical dataset** — Szigeti et al. 2021, *eLife* ("The empirical dataset"
+   below): the source study for `data/pacutes.csv`, reanalysed here.
+3. **Supporting literature** — Szigeti & Heifets 2024, *Biol Psychiatry CNNI*
+   (S3 below): contextual interpretation, not a CGRC methodological source.
+4. **Related expectancy literature** — Szigeti et al. 2024, *Psychological
+   Medicine* (S2 below): context only; not the CGRC method or the data used here.
+
+The author's source code (S4) and the pinned dataset are described after the
+papers. Section labels S1–S4 are stable identifiers referenced from
+`reports/UNRESOLVED.md`; they are ordering tags, not a ranking of importance.
+
+## S1 — the CGRC method paper (primary methodological source)
 
 Szigeti B, Nutt D, Carhart-Harris R, Erritzoe D. **"The difference between
 'placebo group' and 'placebo control': a case study in psychedelic
@@ -36,25 +51,28 @@ Fig 4 (the empirical CGR curves). Facts confirmed against it during this work:
   11.5 -> 6.8 (g 0.58 -> 0.34), only Energy VAS surviving CGR adjustment - all
   reproduced from the public data.
 
-## S2 — companion expectancy paper (context, different trial)
+## S2 — related expectancy literature (context only, different trial)
 
 Szigeti B, Weiss B, Rosas FE, Erritzoe D, Nutt D, Carhart-Harris R. **"Assessing
 expectancy and suggestibility in a trial of escitalopram v. psilocybin for
 depression."** *Psychological Medicine* 54, 1717-1724 (2024).
 <https://doi.org/10.1017/S0033291723003653>
 
-A different trial (escitalopram vs psilocybin for depression), not the microdose
-CGRC. Included because it develops the same expectancy/blinding-failure theme
+A different trial (escitalopram vs psilocybin for depression), **not** the
+microdose CGRC and **not** a source of the CGRC method or the data used here.
+Included only because it develops the same expectancy/blinding-failure theme
 (e.g. it notes 94% correct guessing in another psilocybin trial). It does not
 bear directly on any item in UNRESOLVED.md.
 
-## S3 — review (secondary)
+## S3 — supporting literature (contextual, not a CGRC methodological source)
 
 Szigeti B, Heifets BD. **"Expectancy Effects in Psychedelic Trials."**
 *Biological Psychiatry: Cognitive Neuroscience and Neuroimaging* 9:512-521
 (May 2024). <https://doi.org/10.1016/j.bpsc.2024.02.004>
 
-Same-author review. Used here for two facts that bear on U3 and U6:
+Same-author review; supports *interpretation* of expectancy effects, blinding
+failure and the approximate correct-guess rates, but does not provide the CGRC
+method or estimand. Used here for two facts that bear on U3 and U6:
 
 - The microdose correct-guess rate is "only ~65% to 70%" (a truly blind trial is
   ~50%) - consistent with the public data's 0.647, not with the hardcoded 0.72
@@ -97,8 +115,13 @@ corrects two document claims:
   `round(x, 2)` on every stratum proportion, so `legacy_round = TRUE` is the
   faithful reproduction path (+0.010 PANAS, +0.019 Energy vs the exact ratios).
 
-## The public dataset
+## The empirical dataset (reanalysed here)
 
-`data/pacutes.csv`, from the self-blinding microdose trial (Szigeti et al.,
-*eLife* 10:e62878, 2021), mirrored at `szb37/mcrds_public`. Provenance and
-SHA-256 in `data/PROVENANCE.txt`.
+The source study for the public data reanalysed in the empirical reproduction:
+Szigeti B, et al. **"Self-blinding citizen science to explore psychedelic
+microdosing."** *eLife* 10:e62878 (2021).
+<https://doi.org/10.7554/eLife.62878>
+
+The package pins a checksum-verified public copy as `data/pacutes.csv` (mirrored
+at `szb37/mcrds_public`) for reproducibility. Provenance and SHA-256 in
+`data/PROVENANCE.txt`.
