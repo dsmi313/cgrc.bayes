@@ -1,0 +1,615 @@
+---
+title: "The Correct Guess Rate Curve as a usable analysis tool"
+subtitle: "A Bayesian reimplementation, an UNKNOWN-guess extension, simulation-based design checks, and an interactive app"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 2
+    number_sections: true
+    code_folding: hide
+    df_print: kable
+---
+
+```{r s-setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE,
+                      fig.width = 8, fig.height = 5, dpi = 110)
+set.seed(20260724)
+options(width = 100)
+
+# This manuscript consumes the installed cgrc.bayes package; every cgr_* /
+# cgrc*/ nig_draws() call below is the package's implementation. The exhaustive
+# technical record - full derivations, code audit, extended diagnostics, prior
+# and robustness sensitivities, ROPE analyses and the complete external-data
+# provenance - is the companion document CGRC_bayes.Rmd. This summary is the
+# focused story.
+library(cgrc.bayes)
+library(ggplot2)
+
+# --- primary data: the public week-1 microdose trial ------------------------
+# Put pacutes.csv in the working directory (fetch + checksum-verify with
+# data-raw/download_data.R). MD = microdose/active, PL = placebo.
+stopifnot(file.exists("pacutes.csv"))
+raw <- read.csv("pacutes.csv", stringsAsFactors = FALSE)
+load_scale <- function(code, tp = "w1s1") {
+  d <- raw[raw$test_name == code & raw$tp == tp, ]
+  data.frame(condition = ifelse(d$condition == "MD", "AC", "PL"),
+             guess     = ifelse(d$guess     == "MD", "AC", "PL"),
+             value     = d$value, stringsAsFactors = FALSE)
+}
+SCALES <- c("PANAS" = "PANAS", "Mood VAS" = "mood",
+            "Energy VAS" = "energy", "Cognitive performance" = "CPS")
+sb    <- lapply(SCALES, load_scale); names(sb) <- names(SCALES)
+panas <- sb[["PANAS"]]
+
+# --- external trial datasets ------------------------------------------------
+# Put these CSVs in the working directory alongside pacutes.csv.
+read_ext <- function(f) {
+  stopifnot(file.exists(f))
+  utils::read.csv(f, stringsAsFactors = FALSE)
+}
+
+# --- the app's "Analyse your own trial" logic, as a helper ------------------
+# Audit inputs, detect binary vs UNKNOWN guesses, then run the four-stratum
+# cgrc() or the six-stratum cgrc_unknown(). This is the same decision the Shiny
+# app makes; reused here so the worked examples are literally the app workflow.
+app_analyse <- function(df, condc, guessc, valc, direction = 1, delta = NULL,
+                        delta_sd_frac = 0.5, n_draws = 8000) {
+  aud   <- cgrc_input_audit(df[[condc]], df[[guessc]], df[[valc]])
+  clean <- aud$clean
+  mode  <- if (aud$has_unknown) "unknown" else "binary"
+  if (mode == "binary") clean <- clean[clean$guess %in% c("AC", "PL"), , drop = FALSE]
+  d <- if (!is.null(delta)) delta else delta_sd_frac * stats::sd(clean$value)
+  fit <- if (mode == "unknown")
+           cgrc_unknown(clean, n_draws = n_draws, direction = direction, seed = 1)
+         else cgrc(clean, n_draws = n_draws, direction = direction, seed = 1)
+  hd  <- if (mode == "unknown")
+           cgrc_unknown_headline(clean, direction = direction, delta = d, n_draws = n_draws, seed = 1)
+         else cgrc_headline(clean, direction = direction, delta = d, n_draws = n_draws, seed = 1)
+  list(mode = mode, audit = aud, trial = clean, dir = direction, delta = d, fit = fit, head = hd)
+}
+app_curve <- function(a, label) {
+  if (a$mode == "unknown")
+    cgr_unknown_plot(a$fit$curve, obs_cgr = a$fit$observed_directional_cgr,
+                     u = a$fit$target_unknown_rate, direction_label = label)
+  else cgr_plot(a$fit$curve, obs_cgr = a$fit$observed_cgr, direction_label = label)
+}
+
+N_DRAWS  <- 20000
+has_jags <- requireNamespace("rjags", quietly = TRUE) &&
+            requireNamespace("coda",  quietly = TRUE)
+```
+
+# Motivation and contribution
+
+Blinding fails in many trials, and psychedelic and microdose trials fail it
+badly: participants who correctly guess their arm can respond partly to *belief*
+rather than drug, and because more people in the active arm guess correctly, that
+belief-driven response accumulates unevenly on the treatment side. The **Correct
+Guess Rate Curve (CGRC)** of Szigeti et al. (2023) asks a counterfactual: *what
+would the estimated effect have been if the correct-guess rate (CGR) had been 50%
+— i.e. if blinding had held?* It reweights the four treatment × guess strata to a
+target guess rate while holding the within-class arm composition fixed. The
+original implementation obtains that estimate — and its uncertainty — by resampling
+pseudo-datasets from kernel-density estimates of the strata and **averaging the
+resulting estimates and p-values** over resamples.
+
+`cgrc.bayes` keeps the same CGRC estimand but replaces the resampling with a
+**posterior**: a Normal-Inverse-Gamma model for the four stratum means whose
+uncertainty propagates analytically through the reweighting. Over time the project
+grew from that reimplementation into a small, usable CGRC workflow.
+
+> This work reproduces the original CGRC, formulates the same estimand in a
+> Bayesian framework, evaluates its operating characteristics by simulation,
+> extends it to trials allowing an "I do not know" treatment guess, and packages
+> the resulting workflow in an interactive application exercised on several
+> independent trial datasets.
+
+Those are not five separate contributions; they are the components a researcher
+needs to actually *use* CGRC on a real trial: a coherent estimate with honest
+uncertainty, a way to check whether the adjustment is trustworthy for a given
+design, a way to handle real blinding questionnaires that permit "I do not know",
+and an interface that exposes all of it without custom code.
+
+One caution frames everything below. **Attenuation is not a causal estimate.** When
+the PANAS effect shrinks from a raw ~3.2 points to ~1 point at perfect blinding,
+that drop is *not* "the fraction of the treatment effect caused by expectancy". The
+CGRC is a sensitivity analysis for unblinding under an explicit reweighting model,
+not a causal decomposition.
+
+# Original CGRC and the estimand
+
+Each participant contributes an arm (active AC / placebo PL) and a guess (AC / PL),
+giving four strata `ACAC`, `ACPL`, `PLAC`, `PLPL` (arm, then guess). With $\bar y_k$
+the stratum mean and $\rho_k$ its sample share, the **observed correct-guess rate**
+is $c_{obs} = \rho_{ACAC} + \rho_{PLPL}$, and two within-class ratios describe how
+correct- and incorrect-guessers split across arms:
+$$
+r=\frac{\rho_{PLPL}}{\rho_{PLPL}+\rho_{ACAC}},\qquad
+s=\frac{\rho_{ACPL}}{\rho_{ACPL}+\rho_{PLAC}}.
+$$
+At a target guess rate $c$ the strata receive weights
+$w_{ACAC}=c(1-r)$, $w_{PLPL}=cr$, $w_{ACPL}=(1-c)s$, $w_{PLAC}=(1-c)(1-s)$, and the
+CGR-adjusted contrast is the reweighted active-minus-placebo difference
+$$
+\Delta(c)=\frac{w_{ACAC}\bar y_{ACAC}+w_{ACPL}\bar y_{ACPL}}{w_{ACAC}+w_{ACPL}}
+        -\frac{w_{PLPL}\bar y_{PLPL}+w_{PLAC}\bar y_{PLAC}}{w_{PLPL}+w_{PLAC}}.
+$$
+The target of interest is $\Delta(0.5)$, the effect at a 50% guess rate. Because $r$
+and $s$ come from the observed composition, at $c=c_{obs}$ the reweighting is a
+no-op and
+$$
+\Delta(c_{obs})=\bar y_{AC}-\bar y_{PL},
+$$
+the ordinary unadjusted arm-mean difference. This **observed-CGR identity** is exact
+and is the cleanest validation check in the project: a curve is only in the right
+place if it passes through the reported unadjusted effect at the observed CGR.
+
+```{r s-estimand}
+st  <- cgr_strata(panas); rat <- cgr_ratios(st); o <- cgr_observed(st)
+idn <- cgr_reference_line_test(panas, orig_cgr = o)
+knitr::kable(
+  data.frame(stratum = STRATA, n = lengths(st)[STRATA],
+             mean = round(vapply(st[STRATA], mean, numeric(1)), 2)),
+  caption = sprintf("PANAS week 1: four strata; observed CGR = %.4f, r = %.3f, s = %.3f",
+                    o, rat$r, rat$s))
+```
+
+For PANAS the identity holds to machine precision: $\Delta(c_{obs})=$
+`r round(idn$D_at_obs, 3)` equals the raw arm-mean difference
+`r round(idn$raw_mean_diff, 3)` (error
+`r sprintf("%.1e", abs(idn$D_at_obs - idn$raw_mean_diff))`), while
+$\Delta(0.5)=$ `r round(cgr_delta(0.5, lapply(st, mean), rat$r, rat$s), 3)`. That
+reweighted ~1-point value at perfect blinding, against the ~3.2-point raw
+difference, is the CGRC's substantive claim for PANAS. (The reproduction of
+Szigeti's *shipped* code uses a rounded-ratio variant, `legacy_round = TRUE`; the
+estimand itself uses the exact ratios above. The two paths are kept distinct and
+compared in the full Rmd.)
+
+# Bayesian implementation of the same estimand
+
+Each stratum is modelled as $y_{ij}\mid\mu_j,\sigma^2_j\sim N(\mu_j,\sigma^2_j)$ with
+a Normal-Inverse-Gamma prior
+$\mu_j\mid\sigma^2_j\sim N(m_0,\sigma^2_j/k_0)$,
+$\sigma^2_j\sim\text{Inv-Gamma}(a_0,b_0)$, whose hyperparameters have plain meanings
+($m_0$ a prior mean, $k_0$ a prior sample size in pseudo-observations, $(a_0,b_0)$
+the variance shape and scale). With vague defaults ($m_0=0$, $k_0=10^{-6}$,
+$a_0=b_0=10^{-3}$) the prior contributes negligibly against dozens of observations;
+the conjugate posterior is available in closed form.
+
+> For every posterior draw of the four stratum means, evaluate the same CGRC
+> contrast $\Delta(c)$. The result is a posterior distribution over the whole CGRC
+> curve — a posterior mean, a 95% credible interval, and the posterior probability
+> the effect is favourable at each guess rate — rather than a collection of
+> pseudo-dataset estimates and averaged p-values.
+
+The number of draws controls only Monte Carlo error in these summaries; it is not a
+sample size. (The draw order, within-draw dependence and full derivation are in the
+companion Rmd.)
+
+```{r s-bayes}
+fit_panas <- cgrc(panas, n_draws = N_DRAWS, seed = 2)
+knitr::kable(fit_panas$summary[, c("what", "post_mean", "cri_lo", "cri_hi", "p_favourable")],
+             digits = 3, caption = "PANAS: CGR-adjusted posterior (Normal-Inverse-Gamma conjugate)")
+```
+
+Two probabilities carry the practical message and are **not** the same quantity:
+$P(\text{favourable})$ — the posterior probability the adjusted effect is on the
+beneficial side of zero — answers "is there an effect", while $P(\text{meaningful})$
+— the probability it exceeds a pre-declared minimally-important difference — answers
+"is it large enough to matter". A tail probability is a direct statement about the
+parameter given the data, not a p-value.
+
+# Reproduction and validation against Szigeti et al.
+
+Four checks establish that the Bayesian version reproduces the original behaviour
+and does not redefine the target.
+
+**(1) Published behaviour is reproduced.** Under the activated-expectancy-bias (AEB)
+generative model at the paper's regime ($n=230$, CGR $0.7$, a 3-point effect), the
+unadjusted two-sided significance rates across the four (effect, expectancy)
+scenarios reproduce the published Table 1 (0.05 / 0.86 / 0.78 / 0.99). This same
+500-trial run is the operating-characteristics simulation used in Section 6.
+
+```{r s-repro, cache=TRUE}
+op <- cgr_operating(n = 230, p_cg = 0.7, mu_dte = 3, mu_aeb = 7.7,
+                    n_trials = 500, seed = 1)
+scen <- c("no effect / no expectancy", "effect / no expectancy",
+          "no effect / expectancy", "effect / expectancy")
+knitr::kable(data.frame(scenario = scen,
+  `unadjusted p<0.05 (2-sided)` = round(op$freq_sig, 3),
+  `published Table 1` = c(0.05, 0.86, 0.78, 0.99), check.names = FALSE),
+  caption = "AEB simulation, n = 230, CGR = 0.7, 500 trials: reproduces the published significance rates")
+```
+
+**(2) The observed-CGR identity holds** for every outcome — the adjusted curve
+recovers the ordinary unadjusted contrast at the observed CGR, to machine precision.
+
+```{r s-identity}
+knitr::kable(do.call(rbind, lapply(names(sb), function(nm) {
+  z <- cgr_reference_line_test(sb[[nm]], orig_cgr = cgr_observed(cgr_strata(sb[[nm]])))
+  data.frame(outcome = nm, observed_CGR = round(z$computed_obs_cgr, 4),
+             `Delta(c_obs)` = round(z$D_at_obs, 3), `raw AC-PL` = round(z$raw_mean_diff, 3),
+             `abs error` = sprintf("%.1e", abs(z$D_at_obs - z$raw_mean_diff)),
+             check.names = FALSE)
+})), caption = "Observed-CGR identity across the four outcomes")
+```
+
+**(3) KDE resampling converges on the analytic $\Delta(c)$.** As the resample count
+grows the KDE average converges on the analytic value; the only systematic
+difference at small counts is Monte Carlo variation. Because $\Delta(c)$ depends on
+the strata only through their means and kernel smoothing preserves means, the KDE
+step does not materially change the estimand.
+
+```{r s-kde, cache=TRUE}
+set.seed(11)
+kl <- cgr_kde_ladder(panas, cgr_observed(cgr_strata(panas)), reps = c(32, 100, 1000, 10000))
+knitr::kable(kl[, c("n_rep", "kde_est", "kde_mcse", "analytic", "diff_from_analytic")],
+             digits = 3, caption = "KDE resampling converges on the analytic Delta (PANAS, observed CGR)")
+```
+
+**(4) The procedures agree on the estimand but summarise uncertainty differently.**
+Over repeated trials the KDE point estimate and the Bayesian posterior mean of
+$\Delta(0.5)$ are almost perfectly correlated with the same small bias; their
+*decisions* differ, because averaging a p-value across resampled pseudo-datasets
+has no accepted sampling interpretation.
+
+```{r s-headtohead, cache=TRUE}
+set.seed(101); N <- 300; n_i <- 200; p_cg <- 0.7; mu_dte <- 3
+ke <- kp <- be <- bp <- rep(NA_real_, N)
+for (i in seq_len(N)) {
+  di <- sim_aeb(n_i, p_cg, dte_on = TRUE, aeb_on = FALSE, mu_dte = mu_dte)
+  if (!all(STRATA %in% paste0(di$condition, di$guess))) next
+  ki <- cgr_kde(di, 0.5, n_rep = 100); ke[i] <- ki$est; kp[i] <- ki$p
+  sti <- cgr_strata(di); rti <- cgr_ratios(sti)
+  ddi <- cgr_delta(0.5, lapply(sti, nig_draws, n_draws = 4000), rti$r, rti$s)
+  be[i] <- mean(ddi); bp[i] <- mean(ddi > 0)
+}
+ok <- !is.na(kp)
+knitr::kable(data.frame(
+  Quantity = c("Point-estimate correlation (KDE vs posterior)",
+               "Point-estimate bias: KDE / posterior",
+               "Flag rate: resample-averaged p < 0.05",
+               "Flag rate: posterior P(favourable) > 0.975",
+               "Trials where the two decisions agree"),
+  Value = c(sprintf("%.3f", cor(ke[ok], be[ok])),
+            sprintf("%+.3f / %+.3f", mean(ke[ok]) - mu_dte, mean(be[ok]) - mu_dte),
+            sprintf("%.3f", mean(kp[ok] < 0.05)),
+            sprintf("%.3f", mean(bp[ok] > 0.975)),
+            sprintf("%.0f%%", 100 * mean((kp[ok] < 0.05) == (bp[ok] > 0.975)))),
+  check.names = FALSE),
+  caption = "Original vs Bayesian inference, 300 simulated trials (true Delta = 3)")
+```
+
+The procedures agree closely on the CGRC point estimand but summarise uncertainty
+differently; retaining posterior draws yields directly interpretable quantities in
+place of an averaged p-value. This is a difference in inferential summary, not a
+claim that either approach is categorically better.
+
+# Empirical microdosing example
+
+The primary worked example is the trial CGRC was built on. Following the paper, only
+week-1, single-timepoint records are used — one observation per participant.
+
+The public week-1 data yield an overall CGR of 0.647, whereas the published Figure 4
+marks 0.72. The available plotting code uses 0.72 as a fixed annotation; the
+observed-CGR identity places the unadjusted contrast at 0.647. This is noted here
+primarily because the identity provides a useful implementation check.
+
+```{r s-empirical}
+emp <- do.call(rbind, lapply(names(sb), function(nm) {
+  d <- sb[[nm]]; f <- cgrc(d, n_draws = N_DRAWS, seed = 2)
+  h <- cgrc_headline(d, n_draws = N_DRAWS, seed = 2); s <- f$summary
+  data.frame(outcome = nm, n = nrow(d), observed_CGR = round(f$observed_cgr, 3),
+             `raw` = round(s$post_mean[1], 2), `adjusted (0.50)` = round(s$post_mean[2], 2),
+             `95% CrI` = sprintf("[%.2f, %.2f]", s$cri_lo[2], s$cri_hi[2]),
+             `P(fav)` = sprintf("%.0f%%", 100 * s$p_favourable[2]),
+             `P(meaningful)` = sprintf("%.0f%%", 100 * h$p_meaningful_blind),
+             check.names = FALSE)
+}))
+knitr::kable(emp, caption = "CGR-adjusted results, four outcomes (adjusted = perfect blinding, CGR 0.50; meaningful = beyond a half-SD difference)")
+```
+
+```{r s-panas-fig, fig.height=6}
+plot(fit_panas, title = "PANAS, week 1")
+```
+
+The table reproduces the published attenuation pattern: PANAS and the mood/energy
+VAS effects shrink substantially at a 50% guess rate, with cognitive performance
+near zero throughout.
+
+# Simulation study: is CGRC trustworthy for *this* design?
+
+Szigeti et al. explicitly recommended that researchers first simulate the
+performance of CGR adjustment for the parameters of their own application.
+`cgr_operating()` operationalises exactly that recommendation: it runs many
+independent trials under the AEB generative model at a chosen design and returns the
+adjustment's operating characteristics. This is the section that turns CGRC from an
+equation into something you can decide whether to trust.
+
+## Main operating-characteristic simulation
+
+The 500-trial run from Section 4 (`op`) spans the four scenarios: no effect, a real
+direct treatment effect (DTE), an expectancy confound (AEB), and both. The
+"unadjusted flag" is the posterior probability of a favourable effect from an
+*unadjusted* arm-contrast; the "adjusted flag" is the same probability from the
+CGR-adjusted estimate — both at the standard $P>0.95$.
+
+```{r s-sim-main}
+knitr::kable(data.frame(
+  scenario = scen,
+  `true Delta` = round(op$true, 1),
+  `adj bias` = round(op$adj_bias, 3),
+  RMSE = round(op$adj_rmse, 2),
+  `95% coverage` = round(op$coverage95, 3),
+  `adjusted flag (P>0.95)` = round(op$p_fav_gt_95, 3),
+  `unadjusted flag (P>0.95)` = round(op$unadj_p_fav_gt_95, 3),
+  check.names = FALSE),
+  caption = "Operating characteristics, n = 230, CGR = 0.7, 500 trials/scenario")
+```
+
+The findings, under this generative model:
+
+- The adjusted estimate is **approximately unbiased** (|bias| small in every
+  scenario) with **near-nominal 95% coverage**.
+- When the true adjusted effect is zero (rows 1 and 3), the adjusted false-favourable
+  rate is **controlled** — including the pure-expectancy row, where an unadjusted
+  analysis flags an effect almost every time but the adjusted analysis rarely does.
+- That control has a **cost**: in the rows with a true adjusted effect (rows 2 and 4),
+  the adjusted flag rate sits *below* the unadjusted flag rate in the same row —
+  adjustment can **reduce detection probability**, because it discards the
+  expectancy-associated part of the signal. The correction is not free.
+- These results hold *under the stated generative model*; they are evidence about
+  the estimator's behaviour, not proof that CGRC's causal assumptions are correct.
+
+## Simulation as a design diagnostic
+
+The same function is a *feasibility* check. The wrong-guess strata are populated by
+roughly the $(1-\text{CGR})$ share of participants, so at a high correct-guess rate
+with small $n$ a discordant treatment × guess stratum can come up empty — and the
+estimand is then undefined for that trial. This is intrinsically a high-guess-rate
+phenomenon: at a typical CGR of 0.75 the wrong-guess share is ~25% and empty strata
+essentially never occur, whereas near CGR 0.95 the ~5% wrong-guess share is easily
+exhausted. `cgr_operating()` reports how often it happens as `empty_stratum_rate`.
+
+```{r s-sim-sparse, cache=TRUE}
+sp  <- cgr_operating(n = 50, p_cg = 0.95, mu_dte = 3, mu_aeb = 7.7, n_trials = 300, seed = 1)
+r10 <- sp[sp$DTE == 1 & sp$AEB == 0, ]
+knitr::kable(data.frame(design = "n = 50, CGR = 0.95",
+  `empty-stratum rate` = sprintf("%.0f%%", 100 * r10$empty_stratum_rate),
+  `adjusted bias (feasible trials)` = round(r10$adj_bias, 2),
+  `95% coverage` = round(r10$coverage95, 3), check.names = FALSE),
+  caption = "Sparse-stratum diagnostic: a thin discordant stratum leaves many trials undefined")
+```
+
+A design like this — few participants, near-certain guessing — is one where CGRC
+should **not** be trusted blindly: about half of trials have an empty stratum, leaving
+the adjustment undefined, and even the feasible trials show degraded coverage. This is
+why `cgr_operating()` is not merely a validation function for this paper; it is
+something a researcher runs **before** trusting CGRC on their own trial.
+
+## Running it on your own design
+
+```{r s-tool-code, eval=FALSE}
+# Supply a design resembling your trial and inspect the operating characteristics:
+cgr_operating(n = 120, p_cg = 0.85, n_trials = 500)
+```
+
+A researcher can pass their own sample size and expected correct-guess rate and read
+back bias, RMSE, interval coverage, false-favourable behaviour, and the rate at which
+sparse strata make the adjustment undefined — before committing to an adjusted result.
+
+# Extension: retaining "I do not know" guesses
+
+Real blinding questionnaires frequently offer three options — active, placebo, or
+**"I do not know"**. Dropping the UNKNOWN responses discards randomised participants,
+and recoding them as active/placebo *invents* a directional belief they did not
+report. **`cgrc.bayes` introduces a six-stratum extension** — not part of the
+original Szigeti et al. formulation — that keeps UNKNOWN as an observed third
+response category:
+$$
+ACAC,\ ACPL,\ ACU,\ PLAC,\ PLPL,\ PLU,
+$$
+(arm, then guess, with `U` = UNKNOWN). The adjusted target sets the *directional*
+guess rate to chance while retaining the observed UNKNOWN-response rate,
+$$
+\Delta(0.50,\ u_{obs}),
+$$
+so the correction addresses only the informativeness of the directional guesses. At
+$u=0$ this reduces exactly to the four-stratum estimand, and the observed-CGR identity
+generalises: at the observed directional CGR and observed UNKNOWN rate, the reweighted
+curve equals the raw arm-mean difference.
+
+```{r s-unknown, cache=TRUE}
+set.seed(3)
+du  <- sim_aeb_unknown(n = 240, p_cg = 0.7, u = 0.25, dte_on = TRUE)   # a simulated 3-arm-guess trial
+uf  <- cgrc_unknown(du, n_draws = 8000, direction = 1, seed = 1)
+cnt <- lengths(cgr_unknown_strata(du))[UNKNOWN_STRATA]
+zu  <- cgr_unknown_reference_line_test(du)
+knitr::kable(data.frame(t(cnt), check.names = FALSE),
+  caption = sprintf(
+    "Six strata (simulated): observed directional CGR = %.3f, UNKNOWN rate = %.0f%%; identity error = %.1e",
+    uf$observed_directional_cgr, 100 * uf$observed_unknown_rate,
+    abs(zu$D_at_obs - zu$raw_mean_diff)))
+```
+
+This is **not** the same as assuming the UNKNOWN participants guessed incorrectly:
+their uncertainty stays an observed category rather than being discarded or invented.
+Section 8 applies the extension to a real trial where a third of participants answered
+"I do not know."
+
+# Worked examples on independent trial datasets
+
+The method was not tuned to one dataset. The three trials below — spanning
+psychedelics, dental sham therapy and anaesthesia-masked ketamine — are run through
+**exactly the pipeline the app's *Analyse your own trial* panel uses**: audit the
+inputs, detect binary vs UNKNOWN guesses, then run `cgrc()` or `cgrc_unknown()`. They
+are chosen for the methodological lesson each carries, not to re-report three papers.
+
+| Trial | Design | Guess structure | Why it is useful here |
+|---|---|---|---|
+| Cavanna et al. (2022) | psilocybin microdosing | binary (AC/PL) | the standard four-stratum workflow on another psychedelic dataset |
+| Santana-Penín et al. (2023) | sham dental therapy | AC / PL / UNKNOWN | ~1/3 answered "I do not know" — why retaining UNKNOWN matters (six-stratum) |
+| Lii et al. (2023) | ketamine masked by anaesthesia | AC / PL / UNKNOWN | guessing near chance — when blinding holds, the CGRC correction should be small |
+
+```{r s-examples, cache=TRUE}
+cav <- read_ext("cavanna_cgrc.csv")
+san <- read_ext("santana_cgrc_unk.csv")
+lii <- read_ext("ketamine_cgrc_unk.csv")
+A <- list(
+  Cavanna  = app_analyse(cav, "treatment_received", "treatment_guessed", "vas_dose_days",           direction =  1),
+  Santana  = app_analyse(san, "treatment_received", "treatment_guessed", "pain_improvement_6m_itt", direction =  1, delta = 1.5),
+  Lii      = app_analyse(lii, "treatment_received", "treatment_guessed", "madrs_mean_day1_3",       direction = -1))
+row_of <- function(nm, a) {
+  s <- a$fit$summary
+  ocg <- if (a$mode == "unknown") a$fit$observed_directional_cgr else a$fit$observed_cgr
+  pct <- function(p) sprintf("%.0f%%", 100 * p)
+  data.frame(trial = nm, mode = a$mode, n = nrow(a$trial),
+             `obs CGR` = round(ocg, 3),
+             raw = round(s$post_mean[1], 2), `adjusted (0.50)` = round(s$post_mean[2], 2),
+             `adj 95% CrI` = sprintf("[%.2f, %.2f]", s$cri_lo[2], s$cri_hi[2]),
+             `P(fav) raw->adj` = paste(pct(s$p_favourable[1]), "->", pct(s$p_favourable[2])),
+             `P(meaningful) raw->adj` = paste(pct(a$head$p_meaningful_obs), "->", pct(a$head$p_meaningful_blind)),
+             check.names = FALSE)
+}
+knitr::kable(do.call(rbind, Map(row_of, names(A), A)), row.names = FALSE,
+  caption = "Three independent trials through the app's analysis pipeline (Cavanna outcome = dosing-day VAS positive control)")
+```
+
+Read across the rows: **Santana** shows a favourable pain effect that survives
+adjustment but, at the 1.5-point clinical threshold, is only borderline meaningful —
+and the six-stratum analysis keeps all 77 participants rather than stranding the
+third who answered UNKNOWN. **Lii** shows the opposite regime: with directional
+guessing essentially at chance, the CGRC correction barely moves the estimate, which
+is the correct behaviour when blinding held. **Cavanna** exercises the ordinary
+four-stratum workflow on an independent psychedelic trial.
+
+```{r s-examples-plot, fig.height=5.5, fig.show="hold", out.width="49%"}
+app_curve(A$Santana, "favourable")   # UNKNOWN preserved; effect at the clinical MID
+app_curve(A$Lii,     "favourable")   # near-chance guessing; correction is small
+```
+
+The same workflow behaves sensibly across qualitatively different trials. Provenance
+and preparation caveats for each dataset are documented with the data and in the full
+Rmd.
+
+# From worked examples to the interactive app
+
+The examples above are not bespoke scripts: they were run through the same analysis
+logic the Shiny app exposes to users. The app makes the CGRC workflow usable by
+researchers who did not develop the method and do not want to write R.
+
+## Analyse your own trial
+
+A researcher uploads trial-level data with columns for treatment condition, treatment
+guess, and an outcome. The app then:
+
+1. **audits** the inputs (missing values, unmappable codes, stratum counts, arm-specific
+   guess rates);
+2. **detects** whether guesses are binary or contain UNKNOWN responses;
+3. runs the four-stratum `cgrc()` or the six-stratum `cgrc_unknown()` accordingly;
+4. displays the **CGRC curve** (exactly the figures in Sections 5 and 8);
+5. reports the **raw** and **adjusted** effect and the adjusted **95% credible interval**;
+6. reports **$P(\text{favourable})$** and **$P(\text{meaningful})$**.
+
+## And check whether the adjustment is trustworthy
+
+The second panel runs the Section 6 simulation for a design the researcher describes,
+returning the reliability read-out — bias, coverage, false-favourable behaviour, and
+the empty-stratum rate — as a plain-language verdict. That two-part workflow is the
+point:
+
+> The analysis tells the researcher *what the CGRC adjustment is*; the simulation
+> tells them *whether that adjustment is reliable for a design like theirs*.
+
+## Try it
+
+The whole workflow above is a thin layer over a small package API:
+
+```{r s-app-code, eval=FALSE}
+# 1. Adjust a trial (df has columns condition = AC/PL, guess = AC/PL[/UNKNOWN], value):
+cgrc(my_trial)                                  # or cgrc_unknown(my_trial) when UNKNOWN is present
+
+# 2. Check whether the adjustment is trustworthy for a design like yours:
+cgr_operating(n = 120, p_cg = 0.85, n_trials = 500)
+
+# 3. Do both interactively, no code required:
+install.packages("shiny")
+cgrc.bayes::cgrc_app()                          # launches the "Design" + "Analyse your own trial" app
+```
+
+`cgrc_app()` opens the interactive tool locally (see the repository README for
+launch details); there is no hosted deployment. It is the most direct way to see the
+whole CGRC workflow — analysis and design check together — on your own trial.
+
+# Discussion
+
+**What stays the same.** The Bayesian implementation does not redefine the CGRC
+target: it computes exactly $\Delta(c)$ and satisfies the same observed-CGR identity.
+
+**What the Bayesian implementation adds.** A posterior distribution over that
+estimand, and direct uncertainty summaries — a credible interval, $P(\Delta>0\mid y)$
+and $P(\Delta>\delta\mid y)$ — in place of resample-averaged p-values. Note the Monte
+Carlo distinction precisely: the original generates its estimate by finite resampling,
+whereas the Bayesian version still uses Monte Carlo draws — so it is not error-free —
+but those draws *summarise a defined posterior* rather than construct the estimand;
+more draws shrink summary error toward a fixed target.
+
+**What the simulations add.** A way to examine expected bias, coverage, false-favourable
+behaviour and sparse-stratum failure for a *particular* design before trusting an
+adjusted result — operationalising the paper's own recommendation to simulate first.
+
+**What the UNKNOWN extension adds.** A principled way to retain explicit "I do not know"
+responses rather than discard or recode them — a measurement/data-structure fix, clearly
+labelled as an addition by `cgrc.bayes`.
+
+**What the worked examples add.** Evidence that one workflow applies across different
+trial structures and behaves differently when blinding is poor, mixed, or relatively
+successful.
+
+**What the app adds.** Accessibility. A trial researcher should not have to reconstruct
+the mathematics or write custom R to ask whether unblinding could plausibly alter their
+result — and, just as importantly, whether the CGRC adjustment is even stable for their
+design. (Retaining the posterior also enables practical-equivalence (ROPE) analyses;
+those are demonstrated in the full Rmd.)
+
+**What none of this establishes.** The central defensible claim is narrow: *the Bayesian
+implementation targets the same CGRC estimand while replacing repeated pseudo-dataset
+inference with a posterior over that estimand, and packages the workflow so others can
+use it.* In particular:
+
+- Attenuation is **not** a causal fraction attributable to expectancy.
+- Guessing is post-randomisation and may reflect experienced efficacy or side effects,
+  which the reweighting cannot disentangle.
+- Reproducing the original method validates the computation, not its causal assumptions.
+- The simulations validate behaviour *under the simulation model*, not real-world causal
+  identification.
+- The UNKNOWN extension solves a data-structure problem, not the broader causal
+  limitations of CGRC.
+
+The CGRC — in either implementation — is best read as a **sensitivity analysis for
+unblinding and expectancy**, not a causal decomposition of the treatment effect.
+
+# Sources
+
+Only the first two references underpin this work; full per-finding citations are in
+`reports/SOURCES.md`, and the external-trial datasets are cited with their archives in
+`inst/extdata/external_studies/PROVENANCE.txt`.
+
+- **Primary methodological source** — the original CGRC method reproduced here.
+  Szigeti B, Nutt D, Carhart-Harris R, Erritzoe D. 2023. "The difference between
+  'placebo group' and 'placebo control': a case study in psychedelic microdosing."
+  *Scientific Reports* 13:12107. <https://doi.org/10.1038/s41598-023-34938-7>
+- **Empirical dataset** — source of the public week-1 data reanalysed here.
+  Szigeti B, et al. 2021. "Self-blinding citizen science to explore psychedelic
+  microdosing." *eLife* 10:e62878. <https://doi.org/10.7554/eLife.62878>
+
+Worked-example datasets: Cavanna et al. (2022) *Transl. Psychiatry* 12:307; Santana-Penín
+et al. (2023) *Ann. Anat.* 250:152117; Lii et al. (2023) *Nat. Mental Health* 1:876–886.
+This project reproduces and re-analyses published work; it is independent of and not
+endorsed by the original authors.
+
+```{r s-session, echo=FALSE}
+sessionInfo()
+```
