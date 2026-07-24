@@ -3,15 +3,32 @@
 A reproduction of the Correct Guess Rate Curve (CGRC) method of
 **Szigeti et al. (2023)** and an alternative implementation that expresses the
 uncertainty around the CGR-adjusted estimate as a **posterior distribution**
-rather than through resampling. The estimand is unchanged throughout — this is a
-different way of computing uncertainty around the published quantity, not a
-different quantity.
+rather than through resampling. For the Bayesian reproduction of the original
+binary CGRC, the estimand is unchanged — this is a different way of computing
+uncertainty around the published quantity, not a different quantity. Separately
+labelled **extensions** (notably the UNKNOWN-preserving estimator, below) do
+introduce genuinely different estimands and are marked as such.
 
 The CGRC asks a counterfactual of an imperfectly blinded trial: *what would the
 treatment effect have been if the correct guess rate had been 50% — i.e. if
 blinding had held?* It reweights the four treatment × guess strata to a target
 guess rate while holding the within-class arm ratios fixed, so only *how much
 guessing happened* changes, never *who got what*.
+
+## Install
+
+```r
+# install.packages("remotes")
+remotes::install_github(
+  "dsmi313/cgrc.bayes",
+  upgrade = "never",
+  force   = TRUE
+)
+```
+
+Requires R (>= 4.3). The interactive app additionally needs `shiny`, `ggplot2`
+and `scales`; the backend-agreement check needs `rjags` + a system JAGS install
+(see *Install and reproduce* below).
 
 ## Use it on your own trial
 
@@ -67,7 +84,9 @@ false-treatment-attribution/power trade-off with and without adjustment (a real
 observed arm difference driven by expectancy when the direct effect is zero), an
 operating-characteristics table reporting **both** the standard one-sided Bayesian
 flag `P(favourable) > 0.95` and the approximately direction-matched comparator
-`P > 0.975` (compared with a *favourable-tail* `p < 0.05`, not a two-sided one),
+`P > 0.975` (a rough Bayesian-tail comparator to a *direction-filtered two-sided*
+`p < 0.05` — a two-sided test kept only when the estimate is in the prespecified
+favourable direction, ≈0.025 in that tail under the null),
 a feasibility readout listing **all four** expected stratum sizes and the stated
 design assumptions, and a button to run the exact simulation at your settings —
 whose results are shown side by side with the interpolated lookup and overlaid on

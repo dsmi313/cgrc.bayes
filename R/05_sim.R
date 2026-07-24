@@ -73,10 +73,12 @@ cgr_operating <- function(n_trials = 500, n = 230, p_cg = 0.7,
       a <- d$value[d$condition == "AC"]; b <- d$value[d$condition == "PL"]
       raw_effect <- mean(a) - mean(b)
       unadj[i] <- raw_effect
-      # Direction-MATCHED frequentist event: significant AND in the favourable
-      # direction. The Bayesian flags count only the favourable tail, so counting
-      # two-sided significance here (as older builds did) compared unlike tails and
-      # overstated the match. freq_sig is the ONLY column this changes at dir = +1.
+      # Direction-FILTERED two-sided frequentist event: a two-sided p<0.05 kept
+      # only when the estimate is in the prespecified favourable direction (about
+      # 0.025 in that tail under the null). The one-sided Bayesian flags count only
+      # the favourable direction, so counting UNfiltered two-sided significance
+      # here (as older builds did) compared unlike tails and overstated the match.
+      # freq_sig is the ONLY column this changes at direction = +1.
       sig[i] <- stats::t.test(a, b, var.equal = TRUE)$p.value < 0.05 &&
                 (direction * raw_effect) > 0
     }

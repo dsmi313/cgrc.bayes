@@ -150,8 +150,10 @@ estimand uses only means and KDE smoothing preserves means - but it would
 matter for any quantile or tail-based estimand.
 
 ## U8  Stratum normality is assumed, not established
-Skew and excess kurtosis are reported per stratum in Section 11, but no formal
-check or robust-likelihood comparison has been run. JAGS is now available
-(see U1), and `cgr_jags(likelihood = "t")` implements the Student-t sensitivity,
-but the Rmd does not exercise it at render time, so the robust-likelihood
-comparison remains outstanding (TESTS.md N4).
+Skew and excess kurtosis are reported per stratum in Section 11. **Resolved when
+JAGS is present:** the robust-likelihood comparison now runs at render time — the
+`sens-student-t` chunk (Section 11, `eval = has_jags`) fits both the normal and
+Student-t likelihoods and reports the estimated nu. With JAGS 4.3.2 it gives
+nu ~ 18, so the t collapses toward the normal and the Gaussian conclusion is
+robust (CHANGELOG CH-15). Without JAGS the chunk is skipped, so the comparison is
+simply not rendered rather than outstanding.

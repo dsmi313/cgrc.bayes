@@ -131,7 +131,7 @@ likelihoods and reports the estimated nu. Result: nu ~ 18, so the t collapses
 toward the normal - the Gaussian conclusion is robust. `cgr_jags()` now exposes
 the posterior-mean nu via `attr(out, "nu")`.
 
-### CH-17  cgr_operating() crashed on empty strata  [BREAKING - was fatal]
+### CH-12  cgr_operating() crashed on empty strata  [BREAKING - was fatal]
 `cgr_operating(n = 120, p_cg = 0.85, n_trials = 500)` - the exact "is CGR safe
 for my trial?" call advertised in the README and Section 15 - could abort with
 "empty stratum: PLAC; the estimand is undefined". At a high correct guess rate
@@ -261,8 +261,11 @@ object. Default `NULL` preserves prior behaviour (an external `set.seed`).
 `t.test` `p < 0.05` as the frequentist "significant" event, and the app called
 posterior `P > 0.975` its "Bayesian equivalent".
 **Now:** the frequentist event is `p < 0.05 AND (direction * raw_effect) > 0` — a
-favourable-tail rate that counts the same tail the Bayesian flags count. Both
-`cgr_operating()` and `cgr_unknown_operating()` gained a `direction` argument.
+**direction-filtered two-sided** `t.test`: a two-sided `p < 0.05` kept only when
+the estimate is in the prespecified favourable direction (≈0.025 in that tail
+under the null), which counts the same direction the one-sided Bayesian flags
+count. It is NOT a one-sided test. Both `cgr_operating()` and
+`cgr_unknown_operating()` gained a `direction` argument.
 **Why:** the Bayesian criteria count only the favourable direction, so comparing
 them to two-sided significance overstated the match. The app language is now
 "approximately matched positive-tail thresholds", with an explicit note that the

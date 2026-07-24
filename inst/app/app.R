@@ -40,10 +40,11 @@ MATCHED_OK    <- !is.null(LUT) && "p_fav_gt_975" %in% names(LUT)  # lookup has i
 ## ---- helpers used only for display -----------------------------------------
 
 # The operating-characteristics table shows BOTH Bayesian flag levels, clearly
-# labelled: P>0.95 (the standard one-sided reporting flag) and P>0.975 (the
-# approximately direction-matched comparator to a favourable-tail p<0.05). The
-# frequentist column is now the favourable-tail rate, so it is compared like for
-# like. `matched` guards older lookups that lack the P>0.975 column.
+# labelled: P>0.95 (the standard one-sided reporting flag) and P>0.975 (the rough
+# Bayesian-tail comparator to a direction-filtered two-sided p<0.05). The
+# frequentist column is a two-sided p<0.05 filtered to the favourable direction
+# (~0.025 in that tail under the null), so it is compared like for like against
+# the one-tail Bayesian flags. `matched` guards older lookups without P>0.975.
 op_table_A <- function(lut, n, p_cg, eff, mu_aeb) {
   rows <- do.call(rbind, lapply(list(c(0,0), c(1,0), c(0,1), c(1,1)), function(z)
     cgrc_op_at(lut, n, p_cg, eff, z[1], z[2], mu_aeb)))
@@ -59,7 +60,7 @@ op_table_A <- function(lut, n, p_cg, eff, mu_aeb) {
     `adjusted flags (P>0.95)` = round(rows$p_fav_gt_95, 3),
     check.names = FALSE)
   if (matched) out[["matched flag (P>0.975)"]] <- round(rows$p_fav_gt_975, 3)
-  out[["unadjusted significant (favourable p<0.05)"]] <- round(rows$freq_sig, 3)
+  out[["unadjusted significant (direction-filtered p<0.05)"]] <- round(rows$freq_sig, 3)
   out
 }
 
@@ -78,7 +79,7 @@ op_table_A_unknown <- function(lut, n, p_cg, eff, u) {
     `adjusted flags (P>0.95)` = round(rows$p_fav_gt_95, 3),
     check.names = FALSE)
   if (matched) out[["matched flag (P>0.975)"]] <- round(rows$p_fav_gt_975, 3)
-  out[["unadjusted significant (favourable p<0.05)"]] <- round(rows$freq_sig, 3)
+  out[["unadjusted significant (direction-filtered p<0.05)"]] <- round(rows$freq_sig, 3)
   out
 }
 
@@ -183,17 +184,18 @@ ui <- navbarPage(
           "\"False treatment attribution\" is a real observed arm difference driven",
           "by expectancy when the direct treatment effect is zero — the unadjusted",
           "analysis attributes it to the drug. This is the one plot that uses the",
-          "approximately direction-matched comparator (posterior P>0.975 vs a",
-          "favourable-tail p<0.05); see the note under it."),
+          "rough Bayesian-tail comparator (posterior P>0.975 vs a direction-filtered",
+          "two-sided p<0.05); see the note under it."),
         plotOutput("tradeoff_plot", height = "260px"),
         br(),
         h4("Operating characteristics at your settings"),
         p(class = "muted",
           strong("Two Bayesian flags are shown, both labelled."),
           "\"adjusted flags (P>0.95)\" is the standard one-sided Bayesian flag;",
-          "\"matched flag (P>0.975)\" is the stricter level shown only for",
-          "comparison with a favourable-tail p<0.05 (the \"unadjusted significant\"",
-          "column). Neither threshold is universally correct — 0.95 is the reporting",
+          "\"matched flag (P>0.975)\" is the stricter level shown only as a rough",
+          "comparator to the \"unadjusted significant\" column — a two-sided p<0.05",
+          "filtered to the prespecified favourable direction (≈0.025 in that tail",
+          "under the null). Neither threshold is universally correct — 0.95 is the reporting",
           "default, 0.975 is the comparator. The Bayesian and frequentist columns use",
           "different estimators and are not inferentially identical. The honest power",
           "comparison is the \"real effect, no expectancy\" row; in the expectancy",
@@ -298,6 +300,9 @@ server <- function(input, output, session) {
       cgrc_verdict(LUT, input$n, input$pcg, as.numeric(input$eff), as.numeric(input$mu_aeb))
     tagList(
       div(class = paste0("reliability rel-", rel$class), rel$category),
+      div(class = "muted", style = "margin:-2px 0 6px;",
+          "Feasibility only (smallest expected stratum and empty-stratum rate).",
+          "Bias, coverage and power are in the operating-characteristics table below."),
       div(class = "verdict", HTML(txt)))
   })
 
@@ -350,13 +355,20 @@ server <- function(input, output, session) {
       tags$details(style = "margin-top:8px;",
         tags$summary(class = "muted",
           "Assumptions behind this design simulation (click to expand)"),
-        tags$ul(class = "muted",
+        tags$ul(class = "muted", if (u_on()) tagList(
+          tags$li("Balanced random assignment (each arm with probability 0.5)."),
+          tags$li("The selected DIRECTIONAL correct-guess rate applies symmetrically among directional (AC/PL) responders; the UNKNOWN rate is equal across arms and held fixed."),
+          tags$li("The UNKNOWN-aware generative model is used: UNKNOWN responders carry no expectancy (B_TE = 0)."),
+          tags$li("The target is the direct treatment effect (the reweighted estimate at a 50% directional guess rate, UNKNOWN rate held fixed)."),
+          tags$li("Both directional guess classes must be present, and the UNKNOWN class when the UNKNOWN rate is above zero; structural-zero cells are permitted (the estimand errors only when a required class is absent)."),
+          tags$li("Results are conditional on the selected true-effect and expectancy magnitudes.")
+        ) else tagList(
           tags$li("Balanced random assignment (each arm with probability 0.5)."),
           tags$li("The selected correct-guess rate applies symmetrically to both arms unless otherwise modelled."),
           tags$li("The activated-expectancy-bias (AEB) generative model is used."),
           tags$li("The target is the direct treatment effect (the CGR-adjusted estimate at a 50% guess rate)."),
           tags$li("All four treatment-by-guess strata must be nonempty for the estimand to be defined."),
-          tags$li("Results are conditional on the selected true-effect and expectancy magnitudes."))))
+          tags$li("Results are conditional on the selected true-effect and expectancy magnitudes.")))))
   })
 
   output$power_plot <- renderPlot({
@@ -410,16 +422,16 @@ server <- function(input, output, session) {
     adj_lab <- if (matched) "CGR-adjusted (posterior P>0.975)"
                else "CGR-adjusted (posterior P>0.95)"
     cap <- if (matched)
-      paste("Approximately matched positive-tail thresholds: favourable-tail p<0.05",
-            "vs posterior P(favourable)>0.975. Different estimators — comparable",
-            "directional evidence, not inferentially identical.")
-    else paste("Note: unadjusted is favourable-tail p<0.05; adjusted is P>0.95, a",
-               "looser bar than the matched P>0.975.")
+      paste("Rough tail comparator: two-sided p<0.05 filtered to the favourable",
+            "direction (≈0.025 in that tail under the null) vs posterior",
+            "P(favourable)>0.975. Different estimators — not inferentially identical.")
+    else paste("Note: unadjusted is a direction-filtered two-sided p<0.05; adjusted",
+               "is P>0.95, a looser bar than the matched P>0.975.")
     mlev <- c("false treatment attribution\n(pure expectancy)", "power\n(real effect)")
     df <- data.frame(
       metric = factor(rep(mlev, each = 2), levels = mlev),
-      analysis = factor(c("unadjusted (favourable p<0.05)", adj_lab),
-                        levels = c("unadjusted (favourable p<0.05)", adj_lab)),
+      analysis = factor(c("unadjusted (direction-filtered p<0.05)", adj_lab),
+                        levels = c("unadjusted (direction-filtered p<0.05)", adj_lab)),
       rate = c(fp$freq_sig, fp[[adj_col]], pw$freq_sig, pw[[adj_col]]))
     g <- ggplot(df, aes(metric, rate, fill = analysis)) +
       geom_col(position = position_dodge(0.7), width = 0.62) +

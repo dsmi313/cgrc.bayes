@@ -62,14 +62,15 @@ test_that("app relabels the pure-expectancy outcome (no 'false positive')", {
   expect_false(grepl("Bayesian equivalent", txt, fixed = TRUE))
 })
 
-test_that("cgrc_reliability gives four non-binary categories, not safe/unsafe", {
-  expect_equal(cgrc_reliability(60,  0.00)$category, "Reliable under simulated conditions")
+test_that("cgrc_reliability gives four feasibility categories, not safe/unsafe", {
+  expect_equal(cgrc_reliability(60,  0.00)$category, "Feasibility looks good under simulated conditions")
   expect_equal(cgrc_reliability(20,  0.00)$category, "Use with caution")
   expect_equal(cgrc_reliability(10,  0.00)$category, "Fragile design")
-  expect_equal(cgrc_reliability(60,  0.20)$category, "Adjustment undefined in many simulated trials")
+  expect_equal(cgrc_reliability(60,  0.20)$category, "Adjustment frequently undefined")
   cats <- vapply(list(c(60,0), c(20,0), c(10,0), c(60,0.2)),
                  function(z) cgrc_reliability(z[1], z[2])$category, character(1))
-  expect_false(any(grepl("safe|unsafe", cats, ignore.case = TRUE)))
+  # feasibility-only wording: never claims "reliable"/"safe" on stratum size alone
+  expect_false(any(grepl("safe|unsafe|reliable", cats, ignore.case = TRUE)))
 })
 
 test_that("cgr_expected_strata shows all four strata and sums to n", {

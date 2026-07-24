@@ -405,24 +405,24 @@ cgr_guess_rates <- function(trial) {
     guess_unknown = sum(guess == "UNKNOWN"))
 }
 
-# A four-level reliability category for a design, from feasibility alone (the
-# smallest expected stratum and the simulated empty-stratum rate). Deliberately
-# NOT a binary safe/unsafe verdict: CGR adjustment can be reliable under the
-# simulated conditions, usable with caution, fragile, or effectively undefined
-# when strata come up empty too often. Thresholds are arguments so the app and
-# the tests share one definition. Returns the category and a CSS class the app
-# uses to colour the badge.
+# A four-level FEASIBILITY category for a design, from the smallest expected
+# stratum and the simulated empty-stratum rate ALONE. It deliberately says
+# "feasibility looks good", not "reliable": it does NOT incorporate bias,
+# coverage or power - those are reported separately in the operating-
+# characteristics table. Not a binary safe/unsafe verdict. Thresholds are
+# arguments so the app and the tests share one definition. Returns the category
+# and a CSS class the app uses to colour the badge.
 cgrc_reliability <- function(min_stratum, empty_stratum_rate = NA_real_,
                              thin = 15, degen_warn = 0.02, degen_bad = 0.10) {
   degen <- if (is.na(empty_stratum_rate)) 0 else empty_stratum_rate
   if (degen > degen_bad) {
-    list(category = "Adjustment undefined in many simulated trials", class = "warn")
+    list(category = "Adjustment frequently undefined", class = "warn")
   } else if (min_stratum < thin || degen > degen_warn) {
     list(category = "Fragile design", class = "warn")
   } else if (min_stratum < 2 * thin) {
     list(category = "Use with caution", class = "caution")
   } else {
-    list(category = "Reliable under simulated conditions", class = "ok")
+    list(category = "Feasibility looks good under simulated conditions", class = "ok")
   }
 }
 
