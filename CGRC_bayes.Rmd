@@ -1567,7 +1567,16 @@ app_analyse <- function(df, condc, guessc, valc, direction = 1, delta = NULL,
   hd  <- if (mode == "unknown")
            cgrc_unknown_headline(clean, direction = direction, delta = d, n_draws = n_draws, seed = 1)
          else cgrc_headline(clean, direction = direction, delta = d, n_draws = n_draws, seed = 1)
-  list(mode = mode, audit = aud, trial = clean, dir = direction, delta = d, fit = fit, head = hd)
+  rp  <- tryCatch(
+    if (mode == "unknown")
+      cgr_unknown_rope(clean, grid = seq(0, 1, length.out = 101), n_draws = n_draws,
+                       delta = d, direction = direction)
+    else
+      cgr_rope(clean, grid = seq(0, 1, length.out = 101), n_draws = n_draws,
+               delta = d, direction = direction),
+    error = function(e) NULL)
+  list(mode = mode, audit = aud, trial = clean, dir = direction, delta = d,
+       fit = fit, head = hd, rope = rp)
 }
 
 # the app's Panel B CGR curve (effect + P(favourable) facets)
@@ -1596,6 +1605,31 @@ app_summary <- function(a) {
               paste(pct(s$p_favourable[1]), "→", pct(s$p_favourable[2])),
               paste(pct(a$head$p_meaningful_obs), "→", pct(a$head$p_meaningful_blind))),
     check.names = FALSE)
+}
+
+# the app's region-of-practical-equivalence view: how the posterior splits into
+# meaningful benefit / practically negligible / meaningful harm across the CGR
+# grid, at the study's meaningful-difference threshold (delta).
+app_rope <- function(a, xlab = "correct-guess rate (CGR)") {
+  z   <- a$rope
+  obs <- if (a$mode == "unknown") a$fit$observed_directional_cgr else a$fit$observed_cgr
+  stack <- do.call(rbind, lapply(c("p_benefit", "p_negligible", "p_harm"), function(k)
+    data.frame(cgr = z$cgr, p = z[[k]], region = k)))
+  stack$region <- factor(stack$region, c("p_benefit", "p_negligible", "p_harm"),
+    labels = c("meaningful benefit", "practically negligible", "meaningful harm"))
+  ggplot(stack, aes(cgr, p, fill = region)) +
+    geom_area() +
+    geom_vline(xintercept = 0.5, linetype = "dashed") +
+    geom_vline(xintercept = obs, linetype = "dashed", colour = "darkgreen") +
+    scale_fill_manual(values = c("meaningful benefit" = "#2471A3",
+      "practically negligible" = "grey75", "meaningful harm" = "#C0392B")) +
+    scale_y_continuous(expand = c(0, 0)) +
+    labs(x = xlab, y = "posterior probability", fill = NULL,
+         subtitle = sprintf("split at delta = %.3g outcome units; dashed green = observed CGR",
+                            a$delta)) +
+    theme_minimal(base_size = 13) +
+    theme(legend.position = "bottom",
+          plot.subtitle = element_text(size = rel(0.85)))
 }
 ```
 
@@ -1627,6 +1661,15 @@ app_curve(cav_wb, "positive")
 ```{r ext-cavanna-vas, fig.height=6.5}
 knitr::kable(app_summary(cav_vas), caption = "Cavanna — dosing-day acute-effect VAS (positive control)")
 app_curve(cav_vas, "positive")
+```
+
+The region-of-practical-equivalence view sharpens the positive control: it asks not
+just whether the VAS effect is above zero but whether it clears a
+half-SD meaningful-difference band. At the observed CGR most of the posterior sits
+in **meaningful benefit**, so the acute effect is large, not merely non-zero.
+
+```{r ext-cavanna-vas-rope, fig.height=4.4}
+app_rope(cav_vas)
 ```
 
 Well-being shows nothing to adjust: a raw active-minus-placebo difference near
@@ -1667,6 +1710,16 @@ knitr::kable(app_summary(san), caption = "Santana — 6-month ITT pain improveme
 app_curve(san, "favourable")
 ```
 
+Here the ROPE is the point. P(favourable) is essentially 100%, but splitting the
+posterior at the 1.5-point MID shows that at perfect blinding only about
+`r round(100 * san$rope$p_benefit[which.min(abs(san$rope$cgr - 0.5))])`% of the mass
+is a *meaningful* benefit; the rest is practically negligible. The effect is real
+and favourable, but only borderline clinically important.
+
+```{r ext-santana-rope, fig.height=4.4}
+app_rope(san, xlab = "directional CGR (among AC/PL responses)")
+```
+
 This is the clearest case for the UNKNOWN extension. `r san$fit$n_unknown` of
 `r san$fit$n_total` participants (`r round(100 * san$fit$observed_unknown_rate)`%)
 answered "I do not know." Forcing the binary complete-case analysis keeps only
@@ -1704,6 +1757,16 @@ knitr::kable(data.frame(stratum = UNKNOWN_STRATA, n = lengths(uk)[UNKNOWN_STRATA
 ```{r ext-ketamine-result, fig.height=6.5}
 knitr::kable(app_summary(ket), caption = "Lii / ketamine — mean MADRS Days 1-3 (lower is better; direction = -1)")
 app_curve(ket, "favourable")
+```
+
+The ROPE tells the same cautionary story: the MADRS advantage is favourable, but at
+a half-SD meaningful-difference band only about
+`r round(100 * ket$rope$p_benefit[which.min(abs(ket$rope$cgr - 0.5))])`% of the
+posterior is a meaningful benefit — most is practically negligible. P(favourable)
+alone would have overstated the clinical case.
+
+```{r ext-ketamine-rope, fig.height=4.4}
+app_rope(ket, xlab = "directional CGR (among AC/PL responses)")
 ```
 
 Guessing here is near chance (directional CGR
