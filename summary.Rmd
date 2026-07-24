@@ -122,9 +122,9 @@ unblinding may be propping up the result.
 it something a working researcher can actually use on a real trial:
 
 > It faithfully **reproduces** the original method; it **rebuilds** the same
-> calculation on a cleaner statistical footing that gives honest, directly readable
-> uncertainty; it **stress-tests** the method by simulation so you can tell whether
-> it is trustworthy *for your particular trial design*; it **extends** the method to
+> calculation on a cleaner statistical footing that gives directly interpretable
+> uncertainty; it **stress-tests** the method by simulation so you can tell how well
+> it performs *for your particular trial design*; it **extends** the method to
 > the common real-world case where participants are allowed to answer "I don't know";
 > and it **packages** the whole workflow into a point-and-click app, demonstrated on
 > several independent trials.
@@ -448,19 +448,19 @@ shrinks everything (all four sets of numbers are in the table above):
   something beyond expectancy, this is the strongest candidate.
 - **Cognitive performance** is flat with or without adjustment: near zero throughout,
   with P(favourable) barely above a coin flip. There is no effect for unblinding to
-  inflate, and the method correctly leaves it alone — a reassuring "negative control."
+  inflate, and the method correctly leaves it unchanged — a reassuring null outcome.
 
 None of this proves *why* the mood-type effects shrink. What it shows is that they are
 **fragile to the blinding assumption** in a way the energy effect, and the (absent)
 cognitive effect, are not — which is precisely the judgement the CGRC exists to
 support.
 
-# Stress-testing the method: is it trustworthy for *this* design?
+# Stress-testing the method: how well does it perform for *this* design?
 
 This is, in our view, the most important section — the one that turns the CGRC from a
 formula into something you can *decide whether to rely on*. And it follows the paper's
 own advice: Szigeti et al. explicitly recommended that researchers simulate how the
-adjustment behaves for the specifics of their own study before trusting it.
+adjustment behaves for the specifics of their own study before applying it.
 
 The idea behind a **simulation study** is simple and powerful: invent thousands of
 fake trials in which *we already know the true answer*, run the method on each, and
@@ -500,18 +500,22 @@ knitr::kable(data.frame(
 What this shows, *under this simulation model*:
 
 - The adjusted estimate is **essentially unbiased** in every scenario, and its 95%
-  interval covers the truth close to 95% of the time — so the uncertainty it reports
-  is honest.
+  credible interval covers the true adjusted effect close to 95% of the time under this
+  simulation model — indicating approximately nominal interval calibration.
 - When the true adjusted effect is genuinely zero (rows 1 and 3), the adjusted method
   **rarely raises a false alarm**. This is the headline win: look at the
   expectancy-only row (row 3), where the raw analysis flags an "effect" almost every
   time (0.868) purely from belief — the adjusted analysis correctly stays quiet
   (0.048).
-- That protection has a **price**. In the two rows where a real effect *does* exist
-  (rows 2 and 4), the adjusted flag rate sits *below* the unadjusted one in the same
-  row — the adjustment can **miss real effects more often**, because in stripping out
-  the belief-driven part of the signal it also discards some genuine signal. The
-  correction is not free, and it is honest to say so.
+- That protection has a **price: adjustment costs precision.** In the two rows where a
+  real effect *does* exist (rows 2 and 4), the adjusted flag rate sits *below* the
+  unadjusted one in the same row. This holds even in row 2, where there is *no*
+  expectancy effect at all: re-estimating the contrast under a counterfactual guess
+  distribution relies on the treatment × guess strata rather than the simple
+  randomized-arm comparison, so the estimate is more variable and the flag rate falls
+  even when activated expectancy bias is absent. When expectancy bias *is* present
+  (row 4), the adjustment additionally removes the component associated with the
+  altered guess distribution. Either way, the correction is not free.
 - These conclusions hold *within the simulation's assumptions*. They are evidence
   about how the estimator behaves, not proof that the CGRC's real-world causal story
   is correct.
@@ -542,7 +546,7 @@ knitr::kable(data.frame(design = "n = 50, CGR = 0.95",
 ```
 
 In a design like this — few people, near-certain guessing — the CGRC should **not**
-be trusted blindly: about **half** the trials have an empty box and no defined answer
+be applied uncritically: about **half** the trials have an empty box and no defined answer
 at all, and even the trials that *do* produce an answer have degraded interval
 coverage. That is exactly why this tool is not just a validation exercise for one
 paper: it is something a researcher should run **before** committing to a CGRC
@@ -617,7 +621,7 @@ chosen for the lesson each teaches, not to re-report three papers.
 |---|---|---|---|
 | Cavanna et al. (2022) | psilocybin microdosing | binary (AC/PL) | the standard four-box workflow on another psychedelic dataset |
 | Santana-Penín et al. (2023) | sham dental therapy | AC / PL / UNKNOWN | ~1/3 answered "I don't know" — shows why keeping UNKNOWN matters |
-| Lii et al. (2023) | ketamine masked by anaesthesia | AC / PL / UNKNOWN | guessing near chance — when blinding actually holds, the correction should be tiny |
+| Lii et al. (2023) | ketamine masked by anaesthesia | AC / PL / UNKNOWN | directional guessing near chance — when guessing is uninformative, the correction should be tiny |
 
 ```{r s-examples, cache=TRUE}
 cav <- read_ext("cavanna_cgrc.csv")
@@ -640,7 +644,7 @@ row_of <- function(nm, a) {
              check.names = FALSE)
 }
 knitr::kable(do.call(rbind, Map(row_of, names(A), A)), row.names = FALSE,
-  caption = "Three independent trials through the app's analysis pipeline (Cavanna outcome = dosing-day VAS positive control)")
+  caption = "Three independent trials through the app's analysis pipeline (Cavanna outcome = dosing-day VAS, a high-signal outcome)")
 ```
 
 How to read each row: compare the **raw** and **adjusted (0.50)** columns to see how far
@@ -649,19 +653,20 @@ probability columns — *is there any effect* (P(fav)) and *is it big enough to 
 (P(meaningful)) — to judge what survives. The three trials land in three different
 regimes.
 
-**Cavanna is a positive control.** The outcome is a dosing-day sensation rating —
-something people genuinely should be able to feel — so a real, large effect is expected.
-Guessing sits only a little above chance
+**Cavanna provides a useful high-signal example.** The outcome is a dosing-day sensation
+rating — something people can plausibly feel — so a large effect is expected. Guessing
+sits only a little above chance
 (`r sprintf("%.3f", A$Cavanna$fit$observed_cgr)`), so the adjustment barely touches the
 estimate (`r sprintf("%.1f", A$Cavanna$fit$summary$post_mean[1])` →
 `r sprintf("%.1f", A$Cavanna$fit$summary$post_mean[2])`). The effect is large but, with
 only `r nrow(A$Cavanna$trial)` participants, uncertain — its adjusted credible interval,
 `r sprintf("[%.1f, %.1f]", A$Cavanna$fit$summary$cri_lo[2], A$Cavanna$fit$summary$cri_hi[2])`,
-is wide and dips below zero. The lesson is reassuring: a genuine, strongly-felt effect
-is not erased by the correction; it is simply reported with honest uncertainty.
+is wide and dips below zero. The lesson is reassuring: a large effect is not erased by
+the correction; it is simply reported with a correspondingly wide credible interval.
 
 **Santana is the most instructive case, and it cuts two ways.** On the one hand the
-pain-improvement effect is clearly real and *survives* adjustment — P(favourable) stays
+estimated pain-improvement effect remains strongly positive after adjustment —
+P(favourable) stays
 at `r sprintf("%.0f%%", 100 * A$Santana$fit$summary$p_favourable[2])`, and the adjusted
 interval,
 `r sprintf("[%.2f, %.2f]", A$Santana$fit$summary$cri_lo[2], A$Santana$fit$summary$cri_hi[2])`,
@@ -681,8 +686,9 @@ hold only a handful of people (as few as
 number here is therefore best read as *defined but fragile* — precisely the situation the
 feasibility panel is built to flag.
 
-**Lii is the "blinding worked" case**, and shows the correction going quiet when it
-should. Directional guessing is essentially at chance
+**Lii is the near-chance directional-guessing case**, and shows the correction going
+quiet when directional guessing carries little information. Directional guessing is
+essentially at chance
 (`r sprintf("%.3f", A$Lii$fit$observed_directional_cgr)`, against 0.50 for a coin flip),
 so the adjustment is almost inert: the antidepressant signal moves only from
 `r sprintf("%.2f", A$Lii$fit$summary$post_mean[1])` to
@@ -694,10 +700,11 @@ uncertain — its interval crosses zero with only `r nrow(A$Lii$trial)` particip
 that is a *sample-size* limitation, not an unblinding one, and its six boxes are
 comfortably filled precisely because at-chance guessing spreads people evenly across them.
 
-Taken together, the adjustment does the right thing in three different regimes: it leaves
-a genuine strong effect intact (Cavanna), tempers a real-but-borderline effect while
-honestly flagging its own fragility (Santana), and stays out of the way when blinding
-held (Lii). The two curves below make the Santana and Lii cases visual:
+Taken together, the adjustment behaves as intended across three different regimes: it
+leaves a large effect intact (Cavanna), tempers a real-but-borderline effect while
+flagging its own fragility (Santana), and stays close to the unadjusted estimate when
+directional guessing is near chance (Lii). The two curves below make the Santana and Lii
+cases visual:
 
 ```{r s-examples-plot, fig.height=5.5, fig.show="hold", out.width="49%"}
 app_curve(A$Santana, "favourable")   # UNKNOWN preserved; effect at the clinical MID
@@ -713,7 +720,7 @@ companion technical document.
 Everything above was run through the *same* analysis logic the app exposes — the
 worked examples are not one-off scripts. The point of the app is to let a researcher
 who did **not** develop this method, and does **not** want to write R code, get the
-full analysis and its trustworthiness check by pointing and clicking.
+full analysis and its design check by pointing and clicking.
 
 ## Panel 1 — Analyse your own trial
 
@@ -729,15 +736,16 @@ were in, which arm they guessed, and their outcome. The app then:
 6. reports the two plain-language probabilities — *is there an effect* and *is it big
    enough to matter*.
 
-## Panel 2 — Check whether the adjustment is even trustworthy
+## Panel 2 — Design check: operating characteristics for your design
 
 The second panel runs the simulation stress-test for a design you describe, and hands
-back the reliability read-out — bias, coverage, false-alarm behaviour, and how often
-sparse boxes make the answer undefined — as a plain-language verdict. Together, the two
-panels are the whole point:
+back the operating-characteristics read-out — bias, interval coverage, false-alarm
+behaviour, and how often sparse boxes make the answer undefined — as a plain-language
+summary. Together, the two panels are the whole point:
 
 > The first panel tells you **what the CGRC adjustment says** for your trial; the
-> second tells you **whether you should believe it** for a design like yours.
+> second tells you **whether the adjustment has acceptable operating characteristics**
+> for a design like yours.
 
 ## Try it
 
@@ -748,7 +756,7 @@ you can do the same thing from code if you prefer:
 # 1. Adjust a trial (df has columns condition = AC/PL, guess = AC/PL[/UNKNOWN], value):
 cgrc(my_trial)                                  # or cgrc_unknown(my_trial) when UNKNOWN is present
 
-# 2. Check whether the adjustment is trustworthy for a design like yours:
+# 2. Check the adjustment's operating characteristics for a design like yours:
 cgr_operating(n = 120, p_cg = 0.85, n_trials = 500)
 
 # 3. Do both interactively, no code required:
@@ -758,7 +766,7 @@ cgrc.bayes::cgrc_app()                          # launches the "Design" + "Analy
 
 `cgrc_app()` opens the interactive tool on your own machine (see the repository README
 for launch details); there is no hosted website version. It is the most direct way to
-run the whole workflow — analysis and trustworthiness check together — on your own
+run the whole workflow — analysis and design check together — on your own
 data.
 
 # What this does and does not claim
@@ -768,14 +776,14 @@ It helps to separate the pieces cleanly.
 - **What stays the same as the original.** We compute exactly the same CGRC target,
   $\Delta(c)$, and satisfy the same self-test identity. We did not redefine what is
   being estimated.
-- **What our Bayesian version adds.** An honest, directly readable uncertainty
+- **What our Bayesian version adds.** A directly interpretable posterior uncertainty
   summary — a credible interval and the two plain-language probabilities — in place of
   an averaged p-value. (Our version still uses random draws, so it is not perfectly
   exact either; but those draws *summarise a well-defined answer* rather than
   *construct* the estimate, and adding more draws simply sharpens the picture toward a
   fixed target.)
-- **What the simulation adds.** A way to see, before you trust it, whether the
-  adjustment is roughly unbiased, honest about its uncertainty, and even computable for
+- **What the simulation adds.** A way to see, before you apply it, whether the
+  adjustment is roughly unbiased, approximately calibrated, and even computable for
   your particular design — exactly the "simulate first" step the original paper
   recommended.
 - **What the "I don't know" extension adds.** A principled way to keep genuine "don't
@@ -790,9 +798,9 @@ It helps to separate the pieces cleanly.
   analyses, demonstrated in the full technical document.)
 
 **And, most importantly, what none of this establishes.** The defensible claim is
-narrow: *we rebuilt the same CGRC estimate with honest, direct uncertainty, checked
-when it can be trusted, extended it to real "don't know" answers, and packaged it so
-others can use it.* In particular:
+narrow: *we rebuilt the same CGRC estimate with directly interpretable uncertainty,
+characterised its operating behaviour by simulation, extended it to real "don't know"
+answers, and packaged it so others can use it.* In particular:
 
 - The shrinkage under adjustment is **not** a clean measure of "how much of the effect
   was caused by expectancy."
