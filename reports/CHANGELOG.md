@@ -131,7 +131,7 @@ likelihoods and reports the estimated nu. Result: nu ~ 18, so the t collapses
 toward the normal - the Gaussian conclusion is robust. `cgr_jags()` now exposes
 the posterior-mean nu via `attr(out, "nu")`.
 
-### CH-17  cgr_operating() crashed on empty strata  [BREAKING - was fatal]
+### CH-12  cgr_operating() crashed on empty strata  [BREAKING - was fatal]
 `cgr_operating(n = 120, p_cg = 0.85, n_trials = 500)` - the exact "is CGR safe
 for my trial?" call advertised in the README and Section 15 - could abort with
 "empty stratum: PLAC; the estimand is undefined". At a high correct guess rate
@@ -261,8 +261,11 @@ object. Default `NULL` preserves prior behaviour (an external `set.seed`).
 `t.test` `p < 0.05` as the frequentist "significant" event, and the app called
 posterior `P > 0.975` its "Bayesian equivalent".
 **Now:** the frequentist event is `p < 0.05 AND (direction * raw_effect) > 0` — a
-favourable-tail rate that counts the same tail the Bayesian flags count. Both
-`cgr_operating()` and `cgr_unknown_operating()` gained a `direction` argument.
+**direction-filtered two-sided** `t.test`: a two-sided `p < 0.05` kept only when
+the estimate is in the prespecified favourable direction (≈0.025 in that tail
+under the null), which counts the same direction the one-sided Bayesian flags
+count. It is NOT a one-sided test. Both `cgr_operating()` and
+`cgr_unknown_operating()` gained a `direction` argument.
 **Why:** the Bayesian criteria count only the favourable direction, so comparing
 them to two-sided significance overstated the match. The app language is now
 "approximately matched positive-tail thresholds", with an explicit note that the
@@ -290,6 +293,25 @@ and a mapped-data preview, a visible seed, and downloads for the summary CSV, th
 CGR-curve CSV, a plot PNG, and a self-contained HTML report. New testable helpers:
 `cgr_expected_strata()`, `cgr_guess_rates()`, `cgrc_reliability()`,
 `cgrc_analysis_summary()`, `cgrc_build_html_report()`.
+
+### CH-27  One Bayesian criterion throughout; both trade-off bars Bayesian  [additive column]
+**Was:** the trade-off plot pitched a Bayesian adjusted flag against a frequentist
+t-test bar, and CH-25/26 experimented with a direction-matched two-sided p<0.05
+and a P>0.975 comparator.
+**Now:** every user-facing adjusted or unadjusted "flag"/"power" quantity uses the
+SAME Bayesian criterion, posterior `P(favourable) > 0.95` — headline, power curve,
+trade-off plot, operating table, exact simulation, binary and UNKNOWN modes. The
+trade-off plot compares two BAYESIAN posteriors: the unadjusted raw active-minus-
+placebo contrast vs the CGRC-adjusted Delta at CGR 0.50. `cgr_operating()` and
+`cgr_unknown_operating()` gained an `unadj_p_fav_gt_95` column for the unadjusted
+Bayesian flag, computed on a saved/restored RNG stream so every pre-existing column
+is byte-identical. `freq_sig` reverts to the conventional TWO-SIDED t-test and is
+kept only as a labelled reference reported in the text under the plot ("Frequentist
+reference: … p<0.05 occurred in X% of pure-expectancy simulations"), never plotted
+beside the Bayesian bars. The Bayesian and frequentist criteria are no longer
+called "matched" or "equivalent". `p_fav_gt_975` is retained in the simulation
+output for research/sensitivity use but is not shown anywhere in the app. Both
+lookups were rebuilt to add `unadj_p_fav_gt_95`; all other columns are unchanged.
 
 ## Preserved unchanged
 

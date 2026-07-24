@@ -58,10 +58,12 @@ cgrc_op_at <- function(lut, n, p_cg, true_effect, dte, aeb, mu_aeb = 7.7) {
   eff  <- effs[which.min(abs(effs - true_effect))]
   sub  <- sub[sub$true_effect == eff, ]
   if (!nrow(sub)) stop("no lookup rows for that scenario", call. = FALSE)
-  # a matched-to-two-sided-p<0.05 comparator is available in newer lookups
+  # newer lookups carry the unadjusted Bayesian flag and the (research-only) 0.975
+  # level; include whichever are present so older tables still interpolate.
   metrics <- c("unadj_bias", "adj_bias", "adj_rmse", "coverage95",
                "p_fav_gt_95", "freq_sig", "empty_stratum_rate")
-  if ("p_fav_gt_975" %in% names(sub)) metrics <- c(metrics, "p_fav_gt_975")
+  for (extra in c("unadj_p_fav_gt_95", "p_fav_gt_975"))
+    if (extra %in% names(sub)) metrics <- c(metrics, extra)
   vals <- vapply(metrics, function(m) .cgrc_bilin(sub, "n", "p_cg", m, n, p_cg),
                  numeric(1))
   on_grid <- n %in% sub$n && p_cg %in% sub$p_cg
@@ -110,7 +112,8 @@ cgrc_unknown_op_at <- function(lut, n, p_cg, true_effect, u, dte, aeb) {
   sub  <- sub[sub$true_effect == eff, ]
   if (!nrow(sub)) stop("no UNKNOWN-lookup rows for that scenario", call. = FALSE)
   metrics <- c("unadj_bias", "adj_bias", "adj_rmse", "coverage95",
-               "p_fav_gt_95", "p_fav_gt_975", "freq_sig", "empty_stratum_rate")
+               "p_fav_gt_95", "unadj_p_fav_gt_95", "p_fav_gt_975", "freq_sig",
+               "empty_stratum_rate")
   metrics <- metrics[metrics %in% names(sub)]
   vals <- vapply(metrics, function(m) .cgrc_bilin(sub, "n", "p_cg", m, n, p_cg),
                  numeric(1))
@@ -144,22 +147,25 @@ cgrc_unknown_verdict <- function(lut, n, p_cg, true_effect, u) {
     paste0(" (The smallest of the six strata averages ~%.0f participants here, so ",
            "the estimand can be undefined for some trials - see feasibility.)"),
     minstr) else ""
+  ub <- function(row) if (!is.null(row$unadj_p_fav_gt_95)) row$unadj_p_fav_gt_95 else row$freq_sig
   if (true_effect == 0) {
     sprintf(paste0("UNKNOWN-preserving design at n=%d, directional CGR %.0f%%, ",
-      "UNKNOWN rate %.0f%%, no true effect: when the apparent signal is pure ",
-      "expectancy, the naive analysis reaches p<0.05 in %.0f%% of simulated ",
-      "trials, while the UNKNOWN-adjusted analysis reaches posterior P>0.95 in ",
-      "%.0f%%.%s"),
-      n, 100 * p_cg, 100 * u, 100 * fp$freq_sig, 100 * fp$p_fav_gt_95, feas)
+      "UNKNOWN rate %.0f%%, no true effect, using the standard threshold posterior ",
+      "P(favourable)>0.95 throughout: when the apparent signal is pure expectancy, ",
+      "an unadjusted analysis flags a false effect in %.0f%% of simulated trials, ",
+      "while the UNKNOWN-adjusted analysis flags it in only %.0f%%.%s"),
+      n, 100 * p_cg, 100 * u, 100 * ub(fp), 100 * fp$p_fav_gt_95, feas)
   } else {
     pw <- cgrc_unknown_op_at(lut, n, p_cg, true_effect, u, 1, 0)   # clean power
     sprintf(paste0("UNKNOWN-preserving design at n=%d, directional CGR %.0f%%, ",
-      "UNKNOWN rate %.0f%%: for a real %.1f-point effect the UNKNOWN-adjusted ",
-      "analysis reaches posterior P>0.95 in %.0f%% of simulated trials. When the ",
-      "apparent effect is instead pure expectancy, the naive analysis reaches ",
-      "p<0.05 in %.0f%% and the adjusted analysis in %.0f%%.%s"),
-      n, 100 * p_cg, 100 * u, true_effect, 100 * pw$p_fav_gt_95,
-      100 * fp$freq_sig, 100 * fp$p_fav_gt_95, feas)
+      "UNKNOWN rate %.0f%%, using the standard threshold posterior ",
+      "P(favourable)>0.95 throughout: for a real %.1f-point effect the ",
+      "UNKNOWN-adjusted analysis flags the effect in %.0f%% of simulated trials ",
+      "(its power; the unadjusted analysis %.0f%%). When the apparent effect is ",
+      "instead pure expectancy, an unadjusted analysis flags a false effect in ",
+      "%.0f%% and the adjusted analysis in only %.0f%%.%s"),
+      n, 100 * p_cg, 100 * u, true_effect, 100 * pw$p_fav_gt_95, 100 * ub(pw),
+      100 * ub(fp), 100 * fp$p_fav_gt_95, feas)
   }
 }
 
@@ -405,24 +411,24 @@ cgr_guess_rates <- function(trial) {
     guess_unknown = sum(guess == "UNKNOWN"))
 }
 
-# A four-level reliability category for a design, from feasibility alone (the
-# smallest expected stratum and the simulated empty-stratum rate). Deliberately
-# NOT a binary safe/unsafe verdict: CGR adjustment can be reliable under the
-# simulated conditions, usable with caution, fragile, or effectively undefined
-# when strata come up empty too often. Thresholds are arguments so the app and
-# the tests share one definition. Returns the category and a CSS class the app
-# uses to colour the badge.
+# A four-level FEASIBILITY category for a design, from the smallest expected
+# stratum and the simulated empty-stratum rate ALONE. It deliberately says
+# "feasibility looks good", not "reliable": it does NOT incorporate bias,
+# coverage or power - those are reported separately in the operating-
+# characteristics table. Not a binary safe/unsafe verdict. Thresholds are
+# arguments so the app and the tests share one definition. Returns the category
+# and a CSS class the app uses to colour the badge.
 cgrc_reliability <- function(min_stratum, empty_stratum_rate = NA_real_,
                              thin = 15, degen_warn = 0.02, degen_bad = 0.10) {
   degen <- if (is.na(empty_stratum_rate)) 0 else empty_stratum_rate
   if (degen > degen_bad) {
-    list(category = "Adjustment undefined in many simulated trials", class = "warn")
+    list(category = "Adjustment frequently undefined", class = "warn")
   } else if (min_stratum < thin || degen > degen_warn) {
     list(category = "Fragile design", class = "warn")
   } else if (min_stratum < 2 * thin) {
     list(category = "Use with caution", class = "caution")
   } else {
-    list(category = "Reliable under simulated conditions", class = "ok")
+    list(category = "Feasibility looks good under simulated conditions", class = "ok")
   }
 }
 
@@ -545,21 +551,26 @@ cgrc_verdict <- function(lut, n, p_cg, true_effect, mu_aeb = 7.7) {
     paste0(" (The smallest stratum averages ~%.0f participants here, so the ",
            "estimand can be undefined for some trials - see the feasibility ",
            "readout.)"), minstr) else ""
+  # unadjusted comparator is the Bayesian raw-contrast flag at the SAME P>0.95
+  # threshold; on an older lookup without it, fall back to the t-test rate.
+  ub <- function(row) if (!is.null(row$unadj_p_fav_gt_95)) row$unadj_p_fav_gt_95 else row$freq_sig
   if (true_effect == 0) {
-    sprintf(paste0("At n=%d with %.0f%% correct guessing and no true effect: ",
-      "when the apparent signal is pure expectancy, an unadjusted analysis ",
-      "reaches p<0.05 in %.0f%% of simulated trials, while the CGR-adjusted ",
-      "analysis reaches posterior P>0.95 in %.0f%%.%s"),
-      n, 100 * p_cg, 100 * fp$freq_sig, 100 * fp$p_fav_gt_95, feas)
+    sprintf(paste0("At n=%d with %.0f%% correct guessing and no true effect, using ",
+      "the standard threshold posterior P(favourable)>0.95 throughout: when the ",
+      "apparent signal is pure expectancy, an unadjusted analysis flags a false ",
+      "effect in %.0f%% of simulated trials, while the CGR-adjusted analysis flags ",
+      "it in only %.0f%% — the false treatment attribution the adjustment removes.%s"),
+      n, 100 * p_cg, 100 * ub(fp), 100 * fp$p_fav_gt_95, feas)
   } else {
     pw <- cgrc_op_at(lut, n, p_cg, true_effect, 1, 0, mu_aeb)  # clean power
-    sprintf(paste0("At n=%d with %.0f%% correct guessing: for a real %.1f-point ",
-      "effect the CGR-adjusted analysis reaches posterior P>0.95 in %.0f%% of ",
-      "simulated trials. When the apparent effect is instead pure expectancy, ",
-      "an unadjusted analysis reaches p<0.05 in %.0f%% of trials and the ",
-      "adjusted analysis in %.0f%%. Weigh that trade-off against your own ",
-      "priorities.%s"),
-      n, 100 * p_cg, true_effect, 100 * pw$p_fav_gt_95,
-      100 * fp$freq_sig, 100 * fp$p_fav_gt_95, feas)
+    sprintf(paste0("At n=%d with %.0f%% correct guessing, using the standard ",
+      "threshold posterior P(favourable)>0.95 throughout: for a real %.1f-point ",
+      "effect the CGR-adjusted analysis flags the effect in %.0f%% of simulated ",
+      "trials (its power; the unadjusted analysis %.0f%%). When the apparent effect ",
+      "is instead pure expectancy, an unadjusted analysis flags a false effect in ",
+      "%.0f%% and the adjusted analysis in only %.0f%%. Weigh that trade-off against ",
+      "your own priorities.%s"),
+      n, 100 * p_cg, true_effect, 100 * pw$p_fav_gt_95, 100 * ub(pw),
+      100 * ub(fp), 100 * fp$p_fav_gt_95, feas)
   }
 }

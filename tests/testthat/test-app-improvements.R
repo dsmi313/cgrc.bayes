@@ -17,41 +17,52 @@ app_src_path <- function() {
   "inst/app/app.R"
 }
 
-test_that("cgr_operating uses a DIRECTION-MATCHED frequentist criterion", {
-  # A strong real effect in the NEGATIVE direction: highly significant, but not in
-  # the +favourable direction. With direction = +1 it must NOT be counted as a
-  # favourable frequentist event; with direction = -1 it must be counted.
-  op_pos <- cgr_operating(n_trials = 120, n = 300, p_cg = 0.6, mu_dte = -6,
-                          mu_aeb = 7.7, seed = 1, direction = 1)
-  op_neg <- cgr_operating(n_trials = 120, n = 300, p_cg = 0.6, mu_dte = -6,
-                          mu_aeb = 7.7, seed = 1, direction = -1)
-  r_pos <- op_pos[op_pos$DTE == 1 & op_pos$AEB == 0, ]
-  r_neg <- op_neg[op_neg$DTE == 1 & op_neg$AEB == 0, ]
-  expect_lt(r_pos$freq_sig, 0.05)   # wrong-direction significance is excluded
-  expect_gt(r_neg$freq_sig, 0.80)   # same trials, favourable direction, counted
-})
-
-test_that("both P>0.95 and P>0.975 flags are reported and correctly ordered", {
-  op <- cgr_operating(n_trials = 120, n = 200, p_cg = 0.7, mu_dte = 3, seed = 1)
-  expect_true(all(c("p_fav_gt_95", "p_fav_gt_975") %in% names(op)))
-  # the stricter level can never exceed the looser one
-  expect_true(all(op$p_fav_gt_975 <= op$p_fav_gt_95 + 1e-9))
-  # cgrc_op_at surfaces both from a lookup (skip if the lookup is not built)
+test_that("both trade-off bars are Bayesian at P(favourable)>0.95", {
+  # cg_operating must expose BOTH the adjusted and the unadjusted Bayesian flag,
+  # so the trade-off plot can compare like with like at the same 0.95 threshold.
+  op <- cgr_operating(n_trials = 150, n = 200, p_cg = 0.7, mu_dte = 3, seed = 1)
+  expect_true(all(c("p_fav_gt_95", "unadj_p_fav_gt_95") %in% names(op)))
+  # pure expectancy (DTE=0, AEB=1): the unadjusted Bayesian analysis falsely flags
+  # far more often than the adjusted one - the whole point of the adjustment.
+  pe <- op[op$DTE == 0 & op$AEB == 1, ]
+  expect_gt(pe$unadj_p_fav_gt_95, pe$p_fav_gt_95)
+  expect_lt(pe$p_fav_gt_95, 0.20)          # adjusted false-attribution stays low
+  # cgrc_op_at surfaces the unadjusted Bayesian flag from a rebuilt lookup
   lut <- tryCatch(cgrc_lookup(), error = function(e) NULL)
-  skip_if(is.null(lut), "lookup table not built")
-  r <- cgrc_op_at(lut, 200, 0.7, 3, 1, 0)
-  expect_true(all(c("p_fav_gt_95", "p_fav_gt_975") %in% names(r)))
+  skip_if(is.null(lut) || !"unadj_p_fav_gt_95" %in% names(lut),
+          "rebuilt lookup with unadj_p_fav_gt_95 not present")
+  r <- cgrc_op_at(lut, 200, 0.7, 3, 0, 1)
+  expect_true("unadj_p_fav_gt_95" %in% names(r))
 })
 
-test_that("cgr_unknown_operating is also direction-matched", {
-  op1 <- cgr_unknown_operating(n_trials = 80, n = 300, p_cg = 0.6, u = 0.2,
-                               mu_dte = -6, seed = 1, direction = 1)
-  opm1 <- cgr_unknown_operating(n_trials = 80, n = 300, p_cg = 0.6, u = 0.2,
-                                mu_dte = -6, seed = 1, direction = -1)
-  r1  <- op1[op1$DTE == 1 & op1$AEB == 0, ]
-  rm1 <- opm1[opm1$DTE == 1 & opm1$AEB == 0, ]
-  expect_lt(r1$freq_sig, 0.10)
-  expect_gt(rm1$freq_sig, 0.60)
+test_that("freq_sig is the conventional two-sided t-test kept as a reference", {
+  # It is a familiar reference metric, direction-INVARIANT (unlike the Bayesian
+  # flags), retained in the simulation output but not the plotted criterion.
+  op1  <- cgr_operating(n_trials = 120, n = 200, p_cg = 0.7, mu_dte = 3, seed = 1)
+  opm1 <- cgr_operating(n_trials = 120, n = 200, p_cg = 0.7, mu_dte = 3, seed = 1,
+                        direction = -1)
+  expect_equal(op1$freq_sig, opm1$freq_sig)       # two-sided: direction-invariant
+  # the UNADJUSTED Bayesian flag, by contrast, IS direction-sensitive
+  expect_false(isTRUE(all.equal(op1$unadj_p_fav_gt_95, opm1$unadj_p_fav_gt_95)))
+})
+
+test_that("p_fav_gt_975 is retained internally but not shown in the app", {
+  op <- cgr_operating(n_trials = 60, n = 200, p_cg = 0.7, mu_dte = 3, seed = 1)
+  expect_true("p_fav_gt_975" %in% names(op))       # kept for research/sensitivity
+  expect_true(all(op$p_fav_gt_975 <= op$p_fav_gt_95 + 1e-9))
+  # ... but the default Shiny interface must not display it anywhere
+  txt <- paste(readLines(app_src_path(), warn = FALSE), collapse = "\n")
+  expect_false(grepl("p_fav_gt_975", txt, fixed = TRUE))
+  expect_false(grepl("0.975", txt, fixed = TRUE))
+})
+
+test_that("every user-facing adjusted flag/power in the app is sourced from p_fav_gt_95", {
+  txt <- readLines(app_src_path(), warn = FALSE)
+  # lines that plot/label an adjusted Bayesian rate must reference p_fav_gt_95,
+  # and no user-facing rate may come from the 0.975 column.
+  expect_false(any(grepl("p_fav_gt_975", txt, fixed = TRUE)))
+  expect_true(any(grepl("p_fav_gt_95", txt, fixed = TRUE)))
+  expect_true(any(grepl("unadj_p_fav_gt_95", txt, fixed = TRUE)))
 })
 
 test_that("app relabels the pure-expectancy outcome (no 'false positive')", {
@@ -62,14 +73,15 @@ test_that("app relabels the pure-expectancy outcome (no 'false positive')", {
   expect_false(grepl("Bayesian equivalent", txt, fixed = TRUE))
 })
 
-test_that("cgrc_reliability gives four non-binary categories, not safe/unsafe", {
-  expect_equal(cgrc_reliability(60,  0.00)$category, "Reliable under simulated conditions")
+test_that("cgrc_reliability gives four feasibility categories, not safe/unsafe", {
+  expect_equal(cgrc_reliability(60,  0.00)$category, "Feasibility looks good under simulated conditions")
   expect_equal(cgrc_reliability(20,  0.00)$category, "Use with caution")
   expect_equal(cgrc_reliability(10,  0.00)$category, "Fragile design")
-  expect_equal(cgrc_reliability(60,  0.20)$category, "Adjustment undefined in many simulated trials")
+  expect_equal(cgrc_reliability(60,  0.20)$category, "Adjustment frequently undefined")
   cats <- vapply(list(c(60,0), c(20,0), c(10,0), c(60,0.2)),
                  function(z) cgrc_reliability(z[1], z[2])$category, character(1))
-  expect_false(any(grepl("safe|unsafe", cats, ignore.case = TRUE)))
+  # feasibility-only wording: never claims "reliable"/"safe" on stratum size alone
+  expect_false(any(grepl("safe|unsafe|reliable", cats, ignore.case = TRUE)))
 })
 
 test_that("cgr_expected_strata shows all four strata and sums to n", {

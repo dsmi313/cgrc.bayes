@@ -3,13 +3,18 @@
 Honest three-way split. "VERIFIED" means it was actually computed. "NOT RUN"
 means no R or no JAGS was available and nobody should assume it passes.
 
-**Update (2026-07-21, this environment):** R 4.3.3 + pandoc 3.1.3 + JAGS 4.3.2
-were installed and everything that was previously blocked has now been run. The
-Rmd renders end to end with zero chunk errors, the testthat suite is green
-(297 pass / 0 fail / 0 skip), and the load-bearing backend check PASSES. The
-formerly-blocked items are recorded in the "NOW RUN" section below; only the
-Student-t robustness sensitivity (N4) remains genuinely unrun, because the Rmd
-does not execute the `likelihood = "t"` path at render time.
+**Update (2026-07-24, this environment):** the suite has grown well beyond the
+July-21 state as the UNKNOWN-preserving extension and the Shiny readability pass
+landed. On R 4.3.3 the full testthat suite is green — **1711 pass / 0 fail**,
+with **3 skips** that are JAGS-only (the `cgr_unknown_jags` checks; JAGS was not
+installed in this run). The Student-t robustness sensitivity (N4) DOES run at
+render time via the `sens-student-t` chunk (`eval = has_jags`) and passes when
+JAGS is present (nu ~ 18; see below and CHANGELOG CH-15) — it is not outstanding.
+
+**Earlier update (2026-07-21):** R 4.3.3 + pandoc 3.1.3 + JAGS 4.3.2 were
+installed and everything previously blocked was run; the Rmd rendered end to end
+with zero chunk errors, the then-297-test suite was green (0 fail / 0 skip), and
+the load-bearing backend check PASSED.
 
 ## VERIFIED - computed against an independent reimplementation
 
@@ -36,7 +41,7 @@ does not execute the `likelihood = "t"` path at render time.
 | N1 | The Rmd renders end to end | PASS, zero chunk errors -> CGRC_bayes.html |
 | N2 | `cgr_check_backends()` conjugate vs corrected JAGS | PASS, verdict "identity claim supported" |
 | N3 | JAGS convergence (Rhat, ESS) | PASS, max Rhat 1.0001, min ESS 39664 |
-| N5 | testthat suite executes | PASS, 297 pass / 0 fail / 0 skip |
+| N5 | testthat suite executes | PASS, 1711 pass / 0 fail (2026-07-24; 3 JAGS-only skips without JAGS. Was 297 pass / 0 fail / 0 skip on 2026-07-21 with JAGS) |
 | N6 | Prior sensitivity table renders | PASS |
 | N7 | Small-strata degradation table renders | PASS |
 

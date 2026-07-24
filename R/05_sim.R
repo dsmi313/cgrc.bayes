@@ -52,7 +52,7 @@ cgr_operating <- function(n_trials = 500, n = 230, p_cg = 0.7,
     dte <- as.logical(z[1]); aeb <- as.logical(z[2])
     truth <- if (dte) mu_dte else 0
     adj <- unadj <- numeric(n_trials)
-    cov <- fav <- fav975 <- sig <- valid <- logical(n_trials)
+    cov <- fav <- fav975 <- ufav <- sig <- valid <- logical(n_trials)
     for (i in seq_len(n_trials)) {
       d  <- sim_aeb(n, p_cg, dte, aeb, noise, mu_dte = mu_dte, mu_aeb = mu_aeb)
       # At a high correct-guess rate with small n, a wrong-guess stratum can come
@@ -68,17 +68,22 @@ cgr_operating <- function(n_trials = 500, n = 230, p_cg = 0.7,
       pd <- mean(direction * dd > 0)        # posterior prob. of a FAVOURABLE effect
       adj[i] <- mean(dd)
       cov[i] <- q[1] <= truth && truth <= q[2]
-      fav[i]    <- pd > 0.95                # one-sided flag (standard)
-      fav975[i] <- pd > 0.975               # approx. matched to a two-sided p<0.05
+      fav[i]    <- pd > 0.95                # ADJUSTED Bayesian flag (standard)
+      fav975[i] <- pd > 0.975               # stricter level, kept for research only
       a <- d$value[d$condition == "AC"]; b <- d$value[d$condition == "PL"]
-      raw_effect <- mean(a) - mean(b)
-      unadj[i] <- raw_effect
-      # Direction-MATCHED frequentist event: significant AND in the favourable
-      # direction. The Bayesian flags count only the favourable tail, so counting
-      # two-sided significance here (as older builds did) compared unlike tails and
-      # overstated the match. freq_sig is the ONLY column this changes at dir = +1.
-      sig[i] <- stats::t.test(a, b, var.equal = TRUE)$p.value < 0.05 &&
-                (direction * raw_effect) > 0
+      unadj[i] <- mean(a) - mean(b)
+      # UNADJUSTED BAYESIAN posterior of the raw arm contrast (muAC - muPL) under
+      # the same NIG model and the SAME P(favourable)>0.95 criterion as the
+      # adjusted flag, so the trade-off compares like with like. Drawn on a
+      # saved-and-restored RNG state so every other column is byte-identical to a
+      # build without it.
+      .seed_save <- get(".Random.seed", envir = .GlobalEnv)
+      udd <- nig_draws(a, n_draws = n_draws) - nig_draws(b, n_draws = n_draws)
+      ufav[i] <- mean(direction * udd > 0) > 0.95
+      assign(".Random.seed", .seed_save, envir = .GlobalEnv)
+      # Conventional (two-sided) unadjusted t-test: a familiar frequentist
+      # reference reported in the text only, NOT the plotted criterion.
+      sig[i] <- stats::t.test(a, b, var.equal = TRUE)$p.value < 0.05
     }
     v <- which(valid); nv <- length(v)
     m <- function(x) if (nv) mean(x[v]) else NA_real_
@@ -86,8 +91,11 @@ cgr_operating <- function(n_trials = 500, n = 230, p_cg = 0.7,
                unadj_mean = m(unadj), unadj_bias = m(unadj) - truth,
                adj_mean = m(adj), adj_bias = m(adj) - truth,
                adj_rmse = if (nv) sqrt(mean((adj[v] - truth)^2)) else NA_real_,
-               coverage95 = m(cov), p_fav_gt_95 = m(fav),
-               p_fav_gt_975 = m(fav975), freq_sig = m(sig),
+               coverage95 = m(cov),
+               p_fav_gt_95 = m(fav),            # ADJUSTED Bayesian P(fav)>0.95
+               unadj_p_fav_gt_95 = m(ufav),     # UNADJUSTED Bayesian P(fav)>0.95
+               p_fav_gt_975 = m(fav975),        # research only; not shown in the app
+               freq_sig = m(sig),               # conventional two-sided t-test ref
                empty_stratum_rate = round(mean(!valid), 4), n_valid = nv)
   })
   out <- do.call(rbind, rows); rownames(out) <- NULL; out
@@ -172,7 +180,7 @@ cgr_unknown_operating <- function(n_trials = 500, n = 230, p_cg = 0.7, u = 0.2,
     dte <- as.logical(z[1]); aeb <- as.logical(z[2])
     truth <- if (dte) mu_dte else 0
     adj <- unadj <- numeric(n_trials)
-    cov <- fav <- fav975 <- sig <- valid <- logical(n_trials)
+    cov <- fav <- fav975 <- ufav <- sig <- valid <- logical(n_trials)
     for (i in seq_len(n_trials)) {
       d  <- sim_aeb_unknown(n, p_cg, u, dte, aeb, noise, mu_dte = mu_dte, mu_aeb = mu_aeb)
       st <- cgr_unknown_strata(d); o <- cgr_unknown_observed(st)
@@ -189,14 +197,18 @@ cgr_unknown_operating <- function(n_trials = 500, n = 230, p_cg = 0.7, u = 0.2,
       q  <- stats::quantile(dd, c(0.025, 0.975)); pd <- mean(direction * dd > 0)
       adj[i] <- mean(dd)
       cov[i] <- q[1] <= truth && truth <= q[2]
-      fav[i] <- pd > 0.95; fav975[i] <- pd > 0.975   # matched flag, favourable tail
+      fav[i] <- pd > 0.95; fav975[i] <- pd > 0.975   # 975: research only, not shown
       a <- d$value[d$condition == "AC"]; b <- d$value[d$condition == "PL"]
-      raw_effect <- mean(a) - mean(b)
-      unadj[i] <- raw_effect
-      # Direction-matched frequentist event (see cgr_operating): favourable tail
-      # only, so it compares like-for-like with the Bayesian flags.
-      sig[i] <- stats::t.test(a, b, var.equal = TRUE)$p.value < 0.05 &&
-                (direction * raw_effect) > 0
+      unadj[i] <- mean(a) - mean(b)
+      # Unadjusted BAYESIAN posterior of the raw arm contrast, same P(fav)>0.95
+      # criterion as the adjusted flag (see cgr_operating); saved/restored RNG.
+      .seed_save <- get(".Random.seed", envir = .GlobalEnv)
+      udd <- nig_draws(a, n_draws = n_draws) - nig_draws(b, n_draws = n_draws)
+      ufav[i] <- mean(direction * udd > 0) > 0.95
+      assign(".Random.seed", .seed_save, envir = .GlobalEnv)
+      # Conventional two-sided unadjusted t-test: familiar frequentist reference
+      # only, reported in the text, not the plotted criterion.
+      sig[i] <- stats::t.test(a, b, var.equal = TRUE)$p.value < 0.05
     }
     v <- which(valid); nv <- length(v)
     m <- function(x) if (nv) mean(x[v]) else NA_real_
@@ -204,8 +216,11 @@ cgr_unknown_operating <- function(n_trials = 500, n = 230, p_cg = 0.7, u = 0.2,
                unadj_mean = m(unadj), unadj_bias = m(unadj) - truth,
                adj_mean = m(adj), adj_bias = m(adj) - truth,
                adj_rmse = if (nv) sqrt(mean((adj[v] - truth)^2)) else NA_real_,
-               coverage95 = m(cov), p_fav_gt_95 = m(fav),
-               p_fav_gt_975 = m(fav975), freq_sig = m(sig),
+               coverage95 = m(cov),
+               p_fav_gt_95 = m(fav),            # ADJUSTED Bayesian P(fav)>0.95
+               unadj_p_fav_gt_95 = m(ufav),     # UNADJUSTED Bayesian P(fav)>0.95
+               p_fav_gt_975 = m(fav975),        # research only; not shown in the app
+               freq_sig = m(sig),               # conventional two-sided t-test ref
                empty_stratum_rate = round(mean(!valid), 4), n_valid = nv)
   })
   out <- do.call(rbind, rows); rownames(out) <- NULL; out

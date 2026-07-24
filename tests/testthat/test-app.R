@@ -14,6 +14,8 @@ mk_lut <- function() {
   # clean adjusted power rises linearly with n (DTE on, AEB off)
   g$p_fav_gt_95 <- ifelse(g$DTE == 1 & g$AEB == 0, g$n / 300,
                           ifelse(g$AEB == 1, 0.05, 0.05))
+  # unadjusted Bayesian flag: high under expectancy (false attribution) or effect
+  g$unadj_p_fav_gt_95 <- ifelse(g$AEB == 1, 0.95, ifelse(g$DTE == 1, 0.7, 0.05))
   g$freq_sig   <- ifelse(g$AEB == 1, 0.9, ifelse(g$DTE == 1, 0.6, 0.05))
   g$empty_stratum_rate <- 0
   g$n_valid    <- 500
@@ -41,9 +43,12 @@ test_that("cgrc_power_curve returns the DTE-on/AEB-off row over n", {
 test_that("cgrc_verdict states both criteria and does not pronounce safety", {
   v <- cgrc_verdict(mk_lut(), n = 200, p_cg = 0.6, true_effect = 3)
   expect_type(v, "character")
-  expect_match(v, "P>0.95")   # names the Bayesian criterion (adjusted)
-  expect_match(v, "p<0.05")   # names the frequentist criterion (unadjusted)
+  expect_match(v, "P(favourable)>0.95", fixed = TRUE)  # one Bayesian threshold throughout
+  expect_match(v, "adjusted")                          # names the adjusted analysis
+  expect_match(v, "unadjusted")                        # and the unadjusted comparator
   expect_match(v, "%")
+  # one threshold everywhere: the verdict must not reintroduce the 0.975 level
+  expect_false(grepl("0.975", v, fixed = TRUE))
   # the tool states numbers, it does not pronounce a design safe/unsafe
   expect_false(grepl("safe|unsafe|acceptable", v, ignore.case = TRUE))
 })
