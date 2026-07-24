@@ -270,8 +270,8 @@ ok <- !is.na(kp)
 knitr::kable(data.frame(
   Quantity = c("Point-estimate correlation (KDE vs posterior)",
                "Point-estimate bias: KDE / posterior",
-               "Flag rate: resample-averaged p < 0.05",
-               "Flag rate: posterior P(favourable) > 0.975",
+               "Flag rate: KDE resample-averaged two-sided p < 0.05",
+               "Flag rate: posterior P(favourable) > 0.975 (matches two-sided 0.05)",
                "Trials where the two decisions agree"),
   Value = c(sprintf("%.3f", cor(ke[ok], be[ok])),
             sprintf("%+.3f / %+.3f", mean(ke[ok]) - mu_dte, mean(be[ok]) - mu_dte),
@@ -286,6 +286,13 @@ The procedures agree closely on the CGRC point estimand but summarise uncertaint
 differently; retaining posterior draws yields directly interpretable quantities in
 place of an averaged p-value. This is a difference in inferential summary, not a
 claim that either approach is categorically better.
+
+The posterior flag here is thresholded at $P(\text{favourable})>0.975$ *only* to
+match Szigeti's original **two-sided** $p<0.05$ decision on equal footing (a two-sided
+5% test splits into 2.5% per tail, so the matching one-sided posterior bar is
+$1-0.025$). This is a head-to-head decision-agreement check, not a reporting rule;
+everywhere else in this document, and in the app, the reporting threshold is the
+standard $P(\text{favourable})>0.95$.
 
 # Empirical microdosing example
 
