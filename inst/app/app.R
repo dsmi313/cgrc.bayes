@@ -90,8 +90,11 @@ ui <- navbarPage(
         helpText(class = "muted",
           "Curves and tables are read from a precomputed simulation grid and",
           "interpolated. For the exact numbers at these settings, run the",
-          "simulation below (it fits 2000 posteriors, ~10 s)."),
-        actionButton("run_exact", "Run exact simulation (500 trials)",
+          "simulation below. More trials = less Monte Carlo noise but a longer",
+          "wait (each trial fits 4 posteriors; ~10 s per 500 trials)."),
+        sliderInput("n_trials", "Simulated trials", min = 10, max = 1000,
+                    value = 500, step = 10),
+        actionButton("run_exact", "Run exact simulation",
                      class = "btn-primary btn-sm")
       ),
       mainPanel(
@@ -274,21 +277,25 @@ server <- function(input, output, session) {
     op_table_A(LUT, input$n, input$pcg, as.numeric(input$eff), as.numeric(input$mu_aeb))
   }, digits = 3)
 
-  ## exact simulation, only on demand
+  ## exact simulation, only on demand. n_trials is user-set (10-1000, step 10);
+  ## the count is captured at click time so the printed heading matches the run.
   exact_rv <- reactiveVal(NULL)
   observeEvent(input$run_exact, {
-    withProgress(message = "Running 500 simulated trials x 4 scenarios...",
+    nt <- input$n_trials
+    withProgress(message = sprintf("Running %d simulated trials x 4 scenarios...", nt),
                  value = 0.3, {
-      op <- cgr_operating(n_trials = 500, n = input$n, p_cg = input$pcg,
+      op <- cgr_operating(n_trials = nt, n = input$n, p_cg = input$pcg,
                           mu_dte = as.numeric(input$eff), mu_aeb = as.numeric(input$mu_aeb),
                           noise = "all", seed = 1)
       incProgress(0.7)
+      attr(op, "n_trials") <- nt
       exact_rv(op)
     })
   })
   output$exact_out <- renderUI({
     op <- exact_rv(); if (is.null(op)) return(NULL)
-    tagList(br(), h4("Exact simulation (500 trials, computed just now)"),
+    nt <- attr(op, "n_trials")
+    tagList(br(), h4(sprintf("Exact simulation (%d trials, computed just now)", nt)),
             renderTable({
               data.frame(scenario = CELL_LABEL[paste0(op$DTE, op$AEB)],
                          `adj bias` = round(op$adj_bias, 3),
