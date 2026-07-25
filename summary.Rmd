@@ -1,6 +1,6 @@
 ---
 title: "The Correct Guess Rate Curve as a usable analysis tool"
-subtitle: "Rebuilding a blinding-adjustment method on firmer statistical footing, extending it to real-world 'I don't know' answers, stress-testing it by simulation, and wrapping it in a point-and-click app"
+subtitle: "A Bayesian formulation of a blinding-adjustment method, extended to real-world 'I don't know' answers, stress-tested by simulation, and wrapped in a point-and-click app"
 date: "`r Sys.Date()`"
 output:
   html_document:
@@ -95,14 +95,16 @@ assessing them should know who received the real treatment and who received a
 placebo (a dummy with no active ingredient). Blinding matters because people who
 *believe* they got the real drug often feel better simply from that belief — the
 well-known placebo effect. If participants can tell which group they are in, that
-belief-driven response leaks into the results and inflates the apparent benefit of
-the drug.
+belief-driven response can become part of the observed treatment contrast.
+Randomization still identifies the total effect of treatment assignment; the
+interpretive challenge is separating expectancy-mediated pathways from other treatment mechanisms.
 
 In psychedelic and microdosing trials, blinding fails badly. The drug's effects are
 often noticeable, so participants frequently guess correctly which arm they were in.
 Crucially, the people who got the *real* drug guess correctly more often than the
-people who got placebo. That imbalance means the belief-driven boost piles up
-unevenly, mostly on the treatment side, and masquerades as a genuine drug effect.
+people who got placebo. That imbalance can make expectancy-mediated pathways
+contribute unevenly to the observed randomized treatment contrast, complicating
+interpretation of how much of the result reflects other treatment mechanisms.
 
 Szigeti and colleagues (2023) proposed a clever way to gauge how much this matters.
 Their **Correct Guess Rate Curve (CGRC)** asks a "what if" question:
@@ -112,19 +114,18 @@ Their **Correct Guess Rate Curve (CGRC)** asks a "what if" question:
 > like?*
 
 The "correct guess rate" (CGR) is just the fraction of participants who guessed
-their arm correctly. Perfect blinding corresponds to a CGR of 50% (pure guessing).
-The CGRC recomputes the drug-versus-placebo difference *as if* the guess rate had
-been 50%, and compares that adjusted number to the raw, unadjusted one. If the effect
-shrinks a lot when you "turn off" the correct guessing, that is a warning sign that
-unblinding may be propping up the result.
+their arm correctly. In the original framing, perfect blinding corresponds to a CGR
+of 50% (pure guessing). The CGRC recomputes the drug-versus-placebo difference at a
+target guess rate of 50% and compares that adjusted number to the raw, unadjusted one. If the
+contrast shrinks a lot after re-weighting, that is a warning sign that the result is
+sensitive to the observed guessing pattern.
 
 **This package, `cgrc.bayes`, does four things with that idea**, all aimed at making
 it something a working researcher can actually use on a real trial:
 
-> It faithfully **reproduces** the original method; it **rebuilds** the same
-> calculation on a cleaner statistical footing that gives directly interpretable
-> uncertainty; it **stress-tests** the method by simulation so you can tell how well
-> it performs *for your particular trial design*; it **extends** the method to
+> It faithfully **reproduces** the original method; it **provides a Bayesian
+> formulation** with explicit posterior uncertainty; it **stress-tests** the method
+> by simulation so you can tell how well it performs *for your particular trial design*; it **extends** the method to
 > the common real-world case where participants are allowed to answer "I don't know";
 > and it **packages** the whole workflow into a point-and-click app, demonstrated on
 > several independent trials.
@@ -168,15 +169,17 @@ Now the "what if." To imagine a world with a chosen guess rate $c$, we simply
 **re-weight** the four strata — give them new relative importances that add up to a
 guess rate of $c$ instead of $c_{obs}$ — while keeping each side's internal balance
 fixed. The weights are $w_{ACAC}=c(1-r)$, $w_{PLPL}=cr$, $w_{ACPL}=(1-c)s$, and
-$w_{PLAC}=(1-c)(1-s)$. With those weights the **adjusted treatment effect** is the
-re-weighted "drug average minus placebo average":
+$w_{PLAC}=(1-c)(1-s)$. With those weights the **CGRC-adjusted treatment
+contrast** is the re-weighted "drug average minus placebo average":
 $$
 \Delta(c)=\frac{w_{ACAC}\bar y_{ACAC}+w_{ACPL}\bar y_{ACPL}}{w_{ACAC}+w_{ACPL}}
         -\frac{w_{PLPL}\bar y_{PLPL}+w_{PLAC}\bar y_{PLAC}}{w_{PLPL}+w_{PLAC}}.
 $$
-Read $\Delta(c)$ as "the estimated drug effect if the correct-guess rate had been
-$c$." The number we care about is $\Delta(0.5)$ — the effect under perfect blinding
-(a 50% guess rate).
+Read $\Delta(c)$ as the CGRC-adjusted treatment contrast at target correct-guess
+rate $c$. The primary target is $\Delta(0.5)$. Szigeti et al. (2023) originally
+motivated this quantity as approximating the result under effective blinding; here,
+we treat it more narrowly as the CGRC estimand rather than assuming that it identifies
+a causal perfectly blinded treatment effect.
 
 There is one elegant self-check hidden in this. Because $r$ and $s$ are read off the
 *actual* data, if you set $c$ equal to the *actual* guess rate $c_{obs}$, the
@@ -208,7 +211,7 @@ effect at the observed guess rate, $\Delta(c_{obs})=$
 `r round(idn$D_at_obs, 3)`, equals the raw difference in arm averages,
 `r round(idn$raw_mean_diff, 3)`, with a discrepancy of only
 `r sprintf("%.1e", abs(idn$D_at_obs - idn$raw_mean_diff))` (essentially zero). And
-the adjusted effect under *perfect* blinding is
+the CGRC-adjusted estimate at CGR = 0.5 is
 $\Delta(0.5)=$ `r round(cgr_delta(0.5, lapply(st, mean), rat$r, rat$s), 3)`.
 
 That is the CGRC's substantive claim for PANAS in one comparison: an effect of about
@@ -223,26 +226,25 @@ in the full technical document, `CGRC_bayes.Rmd`.)
 The original method produces its estimate — and its uncertainty — by a computational
 trick called *resampling*: it repeatedly manufactures artificial "pseudo-datasets"
 that resemble the real strata, recomputes the effect on each, and averages the
-results. Averaging the *estimates* this way is fine. But the original also averages
-**p-values** across those pseudo-datasets, and a p-value has no accepted meaning once
-you average it over invented data. This is the piece we wanted to put on firmer
-ground.
+results. Averaging the *estimates* this way is fine. The original also summarizes
+inference by averaging **p-values** across the resampled pseudo-datasets. Because an average of p-values is not a conventional
+inferential quantity, the Bayesian implementation instead propagates uncertainty
+directly through the CGRC estimand.
 
 **A one-paragraph primer on the two ways to express uncertainty.** A *p-value*
 answers a deliberately roundabout question: "if the drug truly did nothing, how
-surprising would data like ours be?" It is easy to misread and, once averaged over
-fabricated datasets, not well defined. The Bayesian alternative we use answers the
+surprising would data like ours be?" It is easy to misread, and its average across
+resampled pseudo-datasets is not a conventional inferential quantity. The Bayesian alternative we use answers the
 *direct* question instead. Rather than committing to a single best-guess number, it
 keeps the **whole range of effect sizes that are consistent with the data**, each
 weighted by how plausible it is. That weighted range is called the **posterior
 distribution**. From it you can read, in plain language:
 
 - a single best estimate (the posterior mean),
-- a **credible interval** — a range that genuinely has, say, a 95% chance of
-  containing the true effect (this is the intuitive meaning people *wrongly* attach
-  to the classical "confidence interval"; here it is actually correct),
-- and the **probability the drug helped** — literally the share of the plausible
-  range that lies on the beneficial side of zero.
+- a **credible interval** — a range containing 95% of the posterior probability for
+  the CGRC-adjusted treatment contrast,
+- and the **posterior probability that the adjusted contrast favours treatment** —
+  the share of the posterior lying on the beneficial side of zero.
 
 Mechanically, we put a standard, deliberately weak statistical model on each
 stratum's average (a "Normal-Inverse-Gamma" model — the workhorse conjugate model for
@@ -262,7 +264,7 @@ manufacture certainty. Second, everything downstream is the ordinary CGRC estima
 we changed *how uncertainty is expressed*, not *what is being estimated*.
 
 Here is that posterior summary for PANAS, at the observed guess rate ("raw") and
-under perfect blinding ("adjusted"):
+at the target CGR of 0.5 ("adjusted"):
 
 ```{r s-bayes}
 fit_panas <- cgrc(panas, n_draws = N_DRAWS, seed = 2)
@@ -273,13 +275,15 @@ knitr::kable(fit_panas$summary[, c("what", "post_mean", "cri_lo", "cri_hi", "p_f
 Two probabilities carry the practical message, and they answer **different**
 questions:
 
-- **$P(\text{favourable})$** — the probability the adjusted effect is on the
-  beneficial side of zero — answers *"is there an effect at all?"*
+- **$P(\text{favourable})$** — the posterior probability the adjusted contrast is
+  on the beneficial side of zero — answers *"does the adjusted contrast favour
+  treatment?"*
 - **$P(\text{meaningful})$** — the probability the effect is bigger than a
   pre-declared "smallest difference worth caring about" — answers *"is it large
   enough to matter clinically?"*
 
-Both are direct statements about the effect given the data, which is exactly what a
+Both are direct posterior statements about the CGRC-adjusted contrast given the
+data, which is exactly what a
 clinician or reviewer actually wants to know.
 
 # Checking it against the original method
@@ -291,7 +295,7 @@ should agree. Four checks do that.
 their method by simulating trials under a specific model of expectancy bias (they
 call it "activated expectancy bias," AEB — the belief-driven boost switched on for
 correct-guessers). Re-running that simulation at the paper's settings (230
-participants, a 70% guess rate, a genuine 3-point drug effect) reproduces their
+participants, a 70% guess rate, a simulated 3-point treatment component) reproduces their
 published rates of "statistically significant" results across four scenarios (no
 effect / a real effect / an expectancy confound / both). The numbers match the
 paper's Table 1 (0.05, 0.86, 0.78, 0.99). The very same 500-trial run is reused as
@@ -398,8 +402,8 @@ the data-derived 0.647. We flag it only because the observed-CGR identity is exa
 the kind of check that surfaces such mismatches.)
 
 The table below runs all four outcomes through the adjustment. Read each row as: the
-raw effect, the effect after imagining perfect blinding, a 95% credible interval for
-that adjusted effect, and the two probabilities defined earlier.
+raw effect, the CGRC-adjusted estimate at CGR = 0.5, a 95% credible interval for
+that adjusted contrast, and the two probabilities defined earlier.
 
 ```{r s-empirical}
 emp <- do.call(rbind, lapply(names(sb), function(nm) {
@@ -412,11 +416,11 @@ emp <- do.call(rbind, lapply(names(sb), function(nm) {
              `P(meaningful)` = sprintf("%.0f%%", 100 * h$p_meaningful_blind),
              check.names = FALSE)
 }))
-knitr::kable(emp, caption = "CGR-adjusted results, four outcomes (adjusted = perfect blinding, CGR 0.50; meaningful = beyond a half-SD difference)")
+knitr::kable(emp, caption = "CGR-adjusted results, four outcomes (adjusted = target CGR 0.50; meaningful = beyond a half-SD difference)")
 ```
 
 The figure below is the CGRC for PANAS. The horizontal axis is the assumed
-correct-guess rate; the black dashed line marks perfect blinding (0.50) and the green
+correct-guess rate; the black dashed line marks the target CGR (0.50) and the green
 dashed line marks the rate actually observed. The top panel shows the estimated
 effect with its credible band; the bottom panel shows the probability the effect is
 favourable, at each guess rate.
@@ -428,14 +432,14 @@ plot(fit_panas, title = "PANAS, week 1")
 Now read the table and figure together, because this is where the CGRC earns its keep.
 For **PANAS**, the raw effect of about
 `r sprintf("%.1f", fit_panas$summary$post_mean[1])` points falls to roughly
-`r sprintf("%.1f", fit_panas$summary$post_mean[2])` under perfect blinding — a drop of
+`r sprintf("%.1f", fit_panas$summary$post_mean[2])` at the target CGR of 0.5 — a drop of
 about two-thirds — and, just as important, the adjusted 95% credible interval
 (`r sprintf("[%.1f, %.1f]", fit_panas$summary$cri_lo[2], fit_panas$summary$cri_hi[2])`)
-now straddles zero, so the probability of even a favourable effect falls to about
+now straddles zero, so the posterior probability that the adjusted contrast favours treatment falls to
+about
 `r sprintf("%.0f%%", 100 * fit_panas$summary$p_favourable[2])`. In plain terms: the
-apparent PANAS benefit is exactly the kind of result that could be substantially an
-artifact of broken blinding — it does not survive the "what if blinding had held?" test
-with any real confidence.
+PANAS contrast is substantially sensitive to the observed guessing pattern: at the
+target CGR, its interval crosses zero and its posterior support is much weaker.
 
 The other three outcomes show that the adjustment is not a blunt instrument that simply
 shrinks everything (all four sets of numbers are in the table above):
@@ -444,11 +448,11 @@ shrinks everything (all four sets of numbers are in the table above):
   footing, its adjusted interval crossing zero.
 - **Energy VAS** is the survivor: even after adjustment its effect stays clearly on the
   favourable side — its adjusted interval sits entirely above zero and its
-  P(favourable) is essentially 100%. If any of these subjective outcomes reflects
-  something beyond expectancy, this is the strongest candidate.
+  P(favourable) is essentially 100%. Among these subjective outcomes, Energy VAS is
+  the least sensitive to the CGRC adjustment.
 - **Cognitive performance** is flat with or without adjustment: near zero throughout,
-  with P(favourable) barely above a coin flip. There is no effect for unblinding to
-  inflate, and the method correctly leaves it unchanged — a reassuring null outcome.
+  with P(favourable) barely above a coin flip. The contrast remains near zero across
+  the curve, so the adjustment changes little — a reassuring null example.
 
 None of this proves *why* the mood-type effects shrink. What it shows is that they are
 **fragile to the blinding assumption** in a way the energy effect, and the (absent)
@@ -467,10 +471,11 @@ fake trials in which *we already know the true answer*, run the method on each, 
 tally up how well it does. The tallies are called **operating characteristics**. The
 ones that matter here:
 
-- **Bias** — on average, does the method land on the true effect, or systematically
-  above/below it? (Near zero is good.)
-- **Coverage** — the method's "95% credible interval" should actually contain the
-  true effect about 95% of the time. Does it? (Near 0.95 is good.)
+- **Bias** — on average, does the method land on the simulation-model target, or
+  systematically above/below it? (Near zero is good.)
+- **Coverage** — the method's "95% credible interval" should contain the true adjusted
+  contrast defined by the simulation model about 95% of the time. Does it? (Near 0.95
+  is good.)
 - **RMSE** — a summary of typical estimation error (smaller is better).
 - **False-alarm rate** vs **detection rate** — how often it flags an effect when
   there truly is none (should be low), versus when there truly is one (should be
@@ -479,7 +484,8 @@ ones that matter here:
 ## The main stress test
 
 Reusing the same 500-trials-per-scenario run from the previous section, across four
-scenarios: no effect, a genuine drug effect, an expectancy confound only, and both.
+scenarios: no treatment component, a simulated treatment component, an expectancy
+component only, and both.
 The **unadjusted flag** is the probability of calling a favourable effect from the
 *raw* comparison; the **adjusted flag** is the same thing from the *CGR-adjusted*
 estimate — both using the standard $P > 0.95$ bar.
@@ -500,9 +506,9 @@ knitr::kable(data.frame(
 What this shows, *under this simulation model*:
 
 - The adjusted estimate is **essentially unbiased** in every scenario, and its 95%
-  credible interval covers the true adjusted effect close to 95% of the time under this
-  simulation model — indicating approximately nominal interval calibration.
-- When the true adjusted effect is genuinely zero (rows 1 and 3), the adjusted method
+  credible interval covers the true adjusted contrast close to 95% of the time under
+  this simulation model — indicating approximately nominal interval calibration.
+- When the true adjusted contrast is zero in the simulation model (rows 1 and 3), the adjusted method
   **rarely raises a false alarm**. This is the headline win: look at the
   expectancy-only row (row 3), where the raw analysis flags an "effect" almost every
   time (0.868) purely from belief — the adjusted analysis correctly stays quiet
@@ -608,7 +614,7 @@ participants secretly guessed wrong. Their uncertainty is kept as its own catego
 neither discarded nor invented. The next section applies this to a real trial where
 about a third of participants actually answered "I don't know."
 
-# Does it hold up on other trials?
+# How does it behave on other trials?
 
 The method was not tuned to a single dataset. The three independent trials below —
 spanning psychedelics, a sham dental therapy, and ketamine masked by anaesthesia — are
@@ -649,8 +655,8 @@ knitr::kable(do.call(rbind, Map(row_of, names(A), A)), row.names = FALSE,
 
 How to read each row: compare the **raw** and **adjusted (0.50)** columns to see how far
 the "what if blinding had held?" recalculation moves the estimate, then use the two
-probability columns — *is there any effect* (P(fav)) and *is it big enough to matter*
-(P(meaningful)) — to judge what survives. The three trials land in three different
+probability columns — *does the adjusted contrast favour treatment?* (P(fav)) and
+*is it big enough to matter?* (P(meaningful)) — to judge what survives. The three trials land in three different
 regimes.
 
 **Cavanna provides a useful high-signal example.** The outcome is a dosing-day sensation
@@ -700,7 +706,8 @@ uncertain — its interval crosses zero with only `r nrow(A$Lii$trial)` particip
 that is a *sample-size* limitation, not an unblinding one, and its six boxes are
 comfortably filled precisely because at-chance guessing spreads people evenly across them.
 
-Taken together, the adjustment behaves as intended across three different regimes: it
+Taken together, the workflow produces qualitatively sensible patterns across three
+different regimes: it
 leaves a large effect intact (Cavanna), tempers a real-but-borderline effect while
 flagging its own fragility (Santana), and stays close to the unadjusted estimate when
 directional guessing is near chance (Lii). The two curves below make the Santana and Lii
@@ -732,9 +739,10 @@ were in, which arm they guessed, and their outcome. The app then:
 2. **detects automatically** whether the guesses are two-way or include "I don't know";
 3. runs the four-box or six-box analysis accordingly;
 4. draws the **CGRC curve** (the same kind of figure shown earlier);
-5. reports the **raw** and **adjusted** effect with a 95% credible interval;
-6. reports the two plain-language probabilities — *is there an effect* and *is it big
-   enough to matter*.
+5. reports the **raw randomized treatment contrast** and **CGRC-adjusted contrast**
+   with a 95% credible interval;
+6. reports the two plain-language probabilities — *does the adjusted contrast favour
+   treatment?* and *is it big enough to matter*.
 
 ## Panel 2 — Design check: operating characteristics for your design
 
@@ -804,8 +812,10 @@ answers, and packaged it so others can use it.* In particular:
 
 - The shrinkage under adjustment is **not** a clean measure of "how much of the effect
   was caused by expectancy."
-- Guessing happens *after* randomisation and can itself reflect real drug effects or
-  side effects, which the re-weighting cannot untangle.
+- The randomized comparison identifies the total effect of treatment assignment.
+  Guessing happens *after* randomisation and can itself reflect treatment or side
+  effects, so re-weighting on guesses does not by itself isolate a pharmacological
+  pathway.
 - Reproducing the original validates the *computation*, not its underlying causal
   assumptions.
 - The simulations validate behaviour *within the simulation's model*, not real-world
@@ -813,13 +823,22 @@ answers, and packaged it so others can use it.* In particular:
 - The "don't know" extension fixes a data-handling problem, not the deeper causal
   limits of the method.
 
+A recent causal-inference analysis makes this distinction explicit. Loewinger et al.
+(2026) formalized the estimand induced by CGRC-type reweighting and showed that,
+without additional causal assumptions, it need not equal a controlled direct
+treatment effect. Their criticism concerns the causal interpretation, not the
+algebraic existence of the CGRC estimand. This package performs inference on that
+estimand: its posterior should not automatically be read as a posterior for the
+pharmacological causal effect or for the effect that would have been observed under
+perfect blinding.
+
 The bottom line: the CGRC — in either the original or our version — is best understood
 as a **sensitivity analysis for unblinding and expectancy**, a way to ask how fragile
 a result is to broken blinding, not a causal decomposition of the treatment effect.
 
 # Sources
 
-Only the first two references underpin this work; full per-finding citations are in
+The first three references underpin this work; full per-finding citations are in
 `reports/SOURCES.md`, and the external-trial datasets are cited with their archives in
 `inst/extdata/external_studies/PROVENANCE.txt`.
 
@@ -827,6 +846,10 @@ Only the first two references underpin this work; full per-finding citations are
   Szigeti B, Nutt D, Carhart-Harris R, Erritzoe D. 2023. "The difference between
   'placebo group' and 'placebo control': a case study in psychedelic microdosing."
   *Scientific Reports* 13:12107. <https://doi.org/10.1038/s41598-023-34938-7>
+- **Causal-interpretation source** — formal analysis of the estimand induced by
+  CGRC-type reweighting. Loewinger G, Stensrud MJ, Nayak SM, Yaden D, Levis AW.
+  2026. "Causal Inference in Studies with Functional Unmasking: Psychedelics and
+  Beyond." medRxiv preprint. <https://doi.org/10.64898/2025.12.05.25341713>.
 - **Empirical dataset** — source of the public week-1 data reanalysed here.
   Szigeti B, et al. 2021. "Self-blinding citizen science to explore psychedelic
   microdosing." *eLife* 10:e62878. <https://doi.org/10.7554/eLife.62878>
