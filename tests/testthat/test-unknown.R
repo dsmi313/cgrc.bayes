@@ -154,7 +154,7 @@ test_that("no UNKNOWN responses reduces to the binary strata and is defined", {
                                       seq(0, 1, length.out = 11), warn = TRUE))
 })
 
-test_that("one empty UNKNOWN arm cell gets structurally zero weight (no pseudo-counts)", {
+test_that("one observed-zero UNKNOWN arm cell is defined but flagged as fragile", {
   # PLU empty: t = ACU/(ACU+PLU) = 1, so w_PLU = u*(1-t) = 0 for all u
   d <- mk_unknown(c(ACAC = 20, ACPL = 8, ACU = 10, PLAC = 9, PLPL = 18, PLU = 0))
   st <- cgr_unknown_strata(d)
@@ -162,9 +162,17 @@ test_that("one empty UNKNOWN arm cell gets structurally zero weight (no pseudo-c
   rat <- cgr_unknown_ratios(st)
   w <- cgr_unknown_weights(0.5, cgr_unknown_observed(st)$u_obs, rat$r, rat$s, rat$t)
   expect_equal(unname(w[["PLU"]]), 0)
+  diag <- expect_warning(
+    cgr_unknown_estimable(st, cgr_unknown_observed(st)$u_obs, 0.5),
+    "boundary within-class share")
+  expect_identical(diag$state, "fragile")
+  expect_true(diag$boundary_share)
+  expect_true("PLU" %in% diag$boundary_cells)
   # the estimate is still finite and the identity still holds
-  set.seed(1); fit <- cgr_unknown_conjugate(d, c(0.5, cgr_unknown_observed(st)$c_obs),
-                                            n_draws = 4000)
+  set.seed(1); fit <- expect_warning(
+    cgr_unknown_conjugate(d, c(0.5, cgr_unknown_observed(st)$c_obs),
+                          n_draws = 4000),
+    "boundary within-class share")
   expect_true(all(is.finite(fit$est)))
 })
 
@@ -251,10 +259,10 @@ test_that("ratio-uncertainty is off by default and widens intervals when on", {
   expect_true(all(is.finite(ru$est)))
 })
 
-test_that("ratio draws hold a structural (empty-cell) share fixed", {
+test_that("ratio draws hold an observed-boundary plug-in share fixed", {
   d <- mk_unknown(c(ACAC = 20, ACPL = 8, ACU = 10, PLAC = 9, PLPL = 18, PLU = 0))
   rd <- cgr_unknown_ratio_draws(cgr_unknown_strata(d), n_draws = 500)
-  expect_length(rd$t, 1L)          # PLU empty -> t fixed at structural 1
+  expect_length(rd$t, 1L)          # PLU observed zero -> plug-in t fixed at 1
   expect_equal(rd$t, 1)
   expect_length(rd$r, 500L)        # correct class has both cells -> randomised
 })

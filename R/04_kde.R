@@ -17,22 +17,31 @@
 # interpretation. It is reproduced here to characterise the original method,
 # not endorsed.
 
-rkde <- function(y, m, bw = 1.0) {
+rkde <- function(y, m, bw = 1.0, round_scores = FALSE) {
   # sample from a Gaussian KDE: pick a datum, add N(0, bw^2)
-  y[sample.int(length(y), m, replace = TRUE)] + stats::rnorm(m, 0, bw)
+  out <- y[sample.int(length(y), m, replace = TRUE)] + stats::rnorm(m, 0, bw)
+  # Python's round() and R's round() both use ties-to-even on ordinary numeric
+  # inputs. Ties have probability zero after Gaussian KDE sampling.
+  if (round_scores) out <- round(out)
+  out
 }
 
-cgr_kde <- function(df, cgr, n_rep = 100, bw = 1.0) {
+cgr_kde <- function(df, cgr, n_rep = 100, bw = 1.0,
+                    source_faithful = TRUE) {
   st <- cgr_strata(df)
-  nk <- cgr_sizes(st, cgr)
+  # The shipped Python first rounds stratum proportions to two decimals and
+  # rounds every KDE pseudo-observation to an integer. These source artefacts
+  # are deliberately isolated from the exact analytic/Bayesian estimand.
+  nk <- cgr_sizes(st, cgr, legacy_round = source_faithful)
 
-  est <- numeric(n_rep); pval <- numeric(n_rep)
+  est <- numeric(n_rep); pval <- numeric(n_rep); all_integer <- TRUE
   for (i in seq_len(n_rep)) {
     ys <- list(); trt <- list()
     for (k in STRATA) {
       m <- nk[[k]]
       if (m <= 0) next
-      ys[[k]]  <- rkde(st[[k]], m, bw)
+      ys[[k]]  <- rkde(st[[k]], m, bw, round_scores = source_faithful)
+      all_integer <- all_integer && all(ys[[k]] == round(ys[[k]]))
       trt[[k]] <- rep(substr(k, 1, 2) == "AC", m)
     }
     y <- unlist(ys, use.names = FALSE)
@@ -42,7 +51,9 @@ cgr_kde <- function(df, cgr, n_rep = 100, bw = 1.0) {
     pval[i] <- tt$p.value
   }
   list(est = mean(est), est_mcse = stats::sd(est) / sqrt(n_rep),
-       p = mean(pval), n_rep = n_rep, draws = est)
+       p = mean(pval), n_rep = n_rep, draws = est,
+       target_sizes = nk, source_faithful = source_faithful,
+       scores_integer = all_integer)
 }
 
 # Full KDE curve in the ORIGINAL procedure's own terms, for reproducing the
@@ -52,16 +63,17 @@ cgr_kde <- function(df, cgr, n_rep = 100, bw = 1.0) {
 # matches the author's config (np.linspace(0, 1, 13)); the paper's bands are not
 # defined in the text, so +/- 1 SD across resamples is used and labelled as such.
 cgr_kde_curve <- function(df, grid = seq(0, 1, length.out = 13),
-                          n_rep = 80, bw = 1.0) {
+                          n_rep = 80, bw = 1.0,
+                          source_faithful = TRUE) {
   st <- cgr_strata(df)
   do.call(rbind, lapply(grid, function(cc) {
-    nk <- cgr_sizes(st, cc)
+    nk <- cgr_sizes(st, cc, legacy_round = source_faithful)
     e <- p <- numeric(n_rep)
     for (i in seq_len(n_rep)) {
       ys <- list(); tr <- list()
       for (k in STRATA) {
         m <- nk[[k]]; if (m <= 0) next
-        ys[[k]]  <- rkde(st[[k]], m, bw)
+        ys[[k]]  <- rkde(st[[k]], m, bw, round_scores = source_faithful)
         tr[[k]] <- rep(substr(k, 1, 2) == "AC", m)
       }
       y <- unlist(ys, use.names = FALSE); t <- unlist(tr, use.names = FALSE)
@@ -80,11 +92,13 @@ cgr_kde_curve <- function(df, grid = seq(0, 1, length.out = 13),
 #   (a) Monte Carlo noise from using only 100 resamples
 #   (b) KDE vs a Gaussian stratum model
 #   (c) averaging p-values vs summarising a posterior
-cgr_kde_ladder <- function(df, cgr, reps = c(100, 1000, 10000), bw = 1.0) {
+cgr_kde_ladder <- function(df, cgr, reps = c(100, 1000, 10000), bw = 1.0,
+                           source_faithful = FALSE) {
   st <- cgr_strata(df); rat <- cgr_ratios(st)
   analytic <- cgr_delta(cgr, lapply(st, mean), rat$r, rat$s)
   out <- do.call(rbind, lapply(reps, function(m) {
-    k <- cgr_kde(df, cgr, n_rep = m, bw = bw)
+    k <- cgr_kde(df, cgr, n_rep = m, bw = bw,
+                 source_faithful = source_faithful)
     data.frame(n_rep = m, kde_est = k$est, kde_mcse = k$est_mcse,
                mean_p = k$p, analytic = analytic,
                diff_from_analytic = k$est - analytic)

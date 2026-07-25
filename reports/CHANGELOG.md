@@ -44,7 +44,7 @@ probability against a frequentist p-value. Proper simulation gives:
       published  0.05 / 0.86 / 0.78 / 0.99
       "all"      0.056/ 0.876/ 0.826/ 0.992
       "arm"      0.056/ 0.970/ 0.930/ 0.998
-**Caveat:** author's source code NOT located (repo 404s on all source paths).
+**Caveat:** the repository was later located; the exact Eq. 4 variance scope remains unverified.
 Convergent empirical evidence, not verification. Figure 3 is labelled a
 reproduction *consistent with* the published operating characteristics.
 
@@ -56,11 +56,13 @@ the first direct evidence the intervals are calibrated.
 
 ### CH-06  Original KDE procedure implemented and run at 100/1000/10000
 **Why:** required to separate three confounded sources of difference. Result:
-KDE converges to the analytic value at 10 000 resamples in every cell, so the
-KDE-vs-Gaussian choice contributes essentially nothing; but 100 resamples
-carries 0.12-0.29 points of Monte Carlo SE. The averaged p-values reproduce the
-published ones (PANAS 0.41 vs 0.43, Energy 0.043 vs 0.04), confirming the port
-is faithful.
+The exact-ratio, unrounded KDE mode converges to the analytic value at 10 000
+resamples in every cell, so KDE-vs-Gaussian smoothing contributes essentially
+nothing there; but 100 resamples carries 0.12-0.29 points of Monte Carlo SE.
+The averaged p-values are close to the published ones (PANAS 0.41 vs 0.43,
+Energy 0.043 vs 0.04). Later source inspection established that fidelity also
+requires two-decimal allocation ratios and integer-rounded KDE pseudo-scores;
+see CH-16.
 **Consequence for framing:** the contribution is computational stability plus a
 change of inferential summary - NOT a change of estimand, and not better
 inference about the trial.
@@ -160,10 +162,10 @@ SOURCES.md S4). Consequences:
   repo tracks the preprint and the Figure-4 block is behind `if False:`. If the
   count is 32 the Monte Carlo error is ~1.8x the 100-resample value. Section 2
   and the KDE ladder updated (32 added).
-- **legacy_round is the faithful reproduction**: `get_strata_ratio` does
-  `round(x, 2)`, so `legacy_round = TRUE` reproduces Szigeti's numbers
-  (+0.010 PANAS, +0.019 Energy). Documented in Section 8; the exact ratios
-  remain the default for the estimand/Bayesian sections.
+- **source reproduction requires ratio and score rounding**: `get_strata_ratio`
+  rounds proportions to two decimals, and generated KDE pseudo-scores are rounded
+  to integers. `cgr_kde(..., source_faithful = TRUE)` applies both operations.
+  Exact ratios remain the default for the analytic/Bayesian estimand.
 - **U9 raised**: guess rates are reversed vs the 2024 review's "higher in the
   active arms" (placebo 0.723 vs microdose 0.528 here).
 
@@ -180,7 +182,7 @@ share t = ACU/(ACU+PLU).
 **Verified properties (tests/testthat/test-unknown.R):** six weights sum to 1
 and split mass by class; `Delta(c_obs, u_obs)` equals the raw arm-mean difference
 exactly; at `u = 0` every formula reduces exactly to the four-stratum
-`cgr_delta()`; an empty stratum is always forced to structurally zero weight
+`cgr_delta()`; an observed empty cell receives zero plug-in target weight
 through r/s/t and is never estimated; exact Santana-Penin (u = 26/77, c = 29/51)
 and ketamine (u = 11/38, c = 14/27) count tables reproduce.
 **Backend agreement:** `cgr_unknown_check_backends()` ran (JAGS 4.3.2) - PASS

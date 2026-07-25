@@ -22,8 +22,9 @@ cgr_observed <- function(st) {
 
 # r = placebo's share of the CORRECT-guess mass
 # s = active's  share of the INCORRECT-guess mass
-# Reweighting preserves these, so it cannot manufacture an arm imbalance the
-# trial never had.
+# Reweighting preserves these within-class arm shares. Overall target arm mass
+# can change with c; cgr_delta() therefore renormalises each arm by its own
+# total weight.
 cgr_ratios <- function(st, legacy_round = FALSE) {
   n <- sum(lengths(st)); rho <- lengths(st) / n
   if (legacy_round) rho <- round(rho, 2)   # reproduces Szigeti's shipped code

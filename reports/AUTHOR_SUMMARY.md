@@ -11,11 +11,11 @@ Three things came out of it that seem worth sending you.
 **The reproduction works.** Using the public week-1 data I get 3.16 unadjusted
 and 1.08 at CGR 0.50 for PANAS, against your published 3.2 and 1.1; energy VAS
 gives 11.38 and 7.10 against 11.5 and 6.8. I also reimplemented the KDE
-resampling procedure directly, and when I run it at 10 000 resamples instead of
-100 it converges on the closed-form value in every cell I tried. The averaged
-p-values come out close to your published ones too (PANAS 0.41 vs 0.43, energy
-0.043 vs 0.04), which is what convinced me the port was faithful rather than
-just plausible.
+resampling procedure in two explicit modes. The exact-ratio, unrounded mode
+converges on the closed-form value; the source-faithful mode separately applies
+the shipped two-decimal stratum proportions and integer rounding of every KDE
+pseudo-score. The averaged p-values are also close to the published ones (PANAS
+0.41 vs 0.43, energy 0.043 vs 0.04).
 
 That comparison also suggests the KDE step is doing less work than it might
 appear. Because the estimand only uses stratum means and kernel smoothing

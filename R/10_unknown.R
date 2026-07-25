@@ -29,8 +29,9 @@ UNKNOWN_STRATA <- c("ACAC", "ACPL", "ACU", "PLAC", "PLPL", "PLU")
 
 # Split a normalised trial (condition in {AC,PL}, guess in {AC,PL,UNKNOWN}) into
 # the six strata. Unlike cgr_strata(), this does NOT error on an empty cell: some
-# cells can be legitimately empty and are then structurally zero-weighted (their
-# preserved within-class arm share is 0). Estimability is checked separately by
+# observed cells may be empty and then receive zero target weight under the
+# plug-in within-class share of 0 or 1. This can be fragile in sparse samples.
+# Estimability is checked separately by
 # cgr_unknown_estimable(). Returns a length-6 list in UNKNOWN_STRATA order, with
 # empty cells present as zero-length vectors.
 cgr_unknown_strata <- function(df) {
@@ -62,8 +63,8 @@ cgr_unknown_observed <- function(st) {
     c_obs = if (n_direct > 0) n_correct / n_direct else NA_real_)
 }
 
-# Preserved within-class arm shares. These are what reweighting holds fixed, so
-# it cannot manufacture an arm imbalance the trial never had.
+# Preserved within-class arm shares. Overall target arm mass can change as c or
+# u changes, so each arm is renormalised when its weighted mean is computed.
 #   r = placebo's share of the CORRECT-guess class     PLPL / (PLPL + ACAC)
 #   s = active's  share of the INCORRECT-guess class   ACPL / (ACPL + PLAC)
 #   t = active's  share of the UNKNOWN-response class   ACU  / (ACU  + PLU)
@@ -82,7 +83,7 @@ cgr_unknown_ratios <- function(st) {
 #   incorrect: w_ACPL + w_PLAC = (1 - u) * (1 - c)
 #   unknown  : w_ACU  + w_PLU  = u
 # and all six sum to 1. When a class is empty its share is NA; but that class's
-# total target mass is then also structurally forced to zero here only if the
+# total target mass is then forced to zero here only if the
 # caller has confirmed estimability. To keep 0 * NA = 0 (an empty cell is never
 # weighted), NA shares are treated as 0 when their class mass is 0.
 cgr_unknown_weights <- function(c, u, r, s, t) {
@@ -98,7 +99,7 @@ cgr_unknown_weights <- function(c, u, r, s, t) {
 
 # Delta(c, u): reweighted active mean minus reweighted placebo mean. `mu` is a
 # named list over UNKNOWN_STRATA of either six scalars (point estimate) or six
-# equal-length draw vectors. A structurally zero-weight cell contributes exactly
+# equal-length draw vectors. A zero-weight cell contributes exactly
 # nothing and its mu is never touched (so an empty cell may carry NA mu safely).
 cgr_unknown_delta <- function(c, u, mu, r, s, t) {
   w <- cgr_unknown_weights(c, u, r, s, t)
@@ -117,14 +118,15 @@ cgr_unknown_delta <- function(c, u, mu, r, s, t) {
 # grid of directional CGR values. Distinguishes three states, per the brief:
 #   - undefined  (error): a required directional class is empty, or u > 0 with an
 #                         empty UNKNOWN class;
-#   - fragile    (warn) : defined but the smallest weighted cell is thin;
+#   - fragile    (warn) : defined but a required class has a boundary arm share
+#                         or the smallest observed cell is thin;
 #   - well populated    : otherwise.
 # Returns an invisible classification; raises an error for the undefined case.
 cgr_unknown_estimable <- function(st, u_target, grid, thin = 5L, warn = TRUE) {
   o <- cgr_unknown_observed(st)
   n <- o$counts
   interior <- any(grid > 0 & grid < 1) || any(abs(grid - 0.5) < 1e-12)
-  if (o$n_correct == 0)
+  if (any(grid > 0) && o$n_correct == 0)
     stop("undefined estimand: the correct-guess class (ACAC + PLPL) is empty.",
          call. = FALSE)
   if (interior && o$n_incorrect == 0)
@@ -133,21 +135,41 @@ cgr_unknown_estimable <- function(st, u_target, grid, thin = 5L, warn = TRUE) {
   if (u_target > 0 && o$n_unknown == 0)
     stop("undefined estimand: target UNKNOWN rate u = ", signif(u_target, 4),
          " > 0 but no UNKNOWN responses were observed.", call. = FALSE)
-  # cells that can carry nonzero weight somewhere on the grid
+  # A nonempty response class represented in only one arm has a plug-in share
+  # of 0 or 1. The estimand remains defined, but that boundary estimate is a
+  # strong empirical assumption and is explicitly surfaced as fragile.
+  relevant_pairs <- list()
+  if (any(grid > 0)) relevant_pairs$correct <- c("ACAC", "PLPL")
+  if (any(grid < 1)) relevant_pairs$incorrect <- c("ACPL", "PLAC")
+  if (u_target > 0) relevant_pairs$unknown <- c("ACU", "PLU")
+  boundary_cells <- unique(unlist(lapply(relevant_pairs, function(z) {
+    if (sum(n[z]) > 0 && any(n[z] == 0)) z[n[z] == 0] else character()
+  }), use.names = FALSE))
+  # cells that contain observations and can inform the plug-in formulation
   used <- names(n)[n > 0]
   thin_cells <- used[n[used] < thin]
-  state <- if (length(thin_cells)) "fragile" else "well_populated"
-  if (warn && length(thin_cells))
-    warning("sparse UNKNOWN-preserving strata (n < ", thin, "): ",
-            paste(sprintf("%s=%d", thin_cells, n[thin_cells]), collapse = ", "),
-            "; the reweighted estimate is defined but fragile.", call. = FALSE)
+  state <- if (length(thin_cells) || length(boundary_cells)) "fragile" else "well_populated"
+  if (warn && (length(thin_cells) || length(boundary_cells))) {
+    detail <- character()
+    if (length(boundary_cells)) detail <- c(detail, paste0(
+      "boundary within-class share from observed zero cell(s): ",
+      paste(boundary_cells, collapse = ", ")))
+    if (length(thin_cells)) detail <- c(detail, paste0(
+      "sparse strata (n < ", thin, "): ",
+      paste(sprintf("%s=%d", thin_cells, n[thin_cells]), collapse = ", ")))
+    warning(paste(detail, collapse = "; "),
+            "; the plug-in estimate is defined but fragile.", call. = FALSE)
+  }
   invisible(list(state = state, thin_cells = thin_cells,
+                 boundary_share = length(boundary_cells) > 0,
+                 boundary_cells = boundary_cells,
+                 zero_cells = names(n)[n == 0],
                  min_stratum = min(n[used])))
 }
 
 # Conjugate Normal-Inverse-Gamma posterior for the six-stratum contrast. Reuses
 # nig_draws() (no duplicate posterior code). Draws are generated only for cells
-# with observations; a structurally zero-weight (empty) cell is given NA mu and
+# with observations; a zero-weight empty cell is given NA mu and
 # is never referenced. n_draws controls Monte Carlo precision only - it is not a
 # sample size.
 # ratio_uncertainty (Section 17E, default FALSE): when TRUE, propagate posterior
@@ -206,14 +228,14 @@ cgr_unknown_conjugate <- function(df, grid = seq(0, 1, length.out = 101),
 # shares r, s, t instead of their observed point values. The original CGRC (and
 # this extension's default) CONDITIONS on r, s, t; treating them as uncertain
 # propagates binomial sampling error in the stratum composition, a different,
-# larger uncertainty statement. A share whose class has an empty arm cell is held
-# at its structural value (0 or 1), never randomised. Off by default so results
+# larger uncertainty statement. A share whose class has an observed empty arm
+# cell is held at its plug-in value (0 or 1), never randomised. Off by default so results
 # do not change.
 cgr_unknown_ratio_draws <- function(st, n_draws, alpha = 1) {
   n <- lengths(st)
   draw <- function(a, b) {
     if (a > 0 && b > 0) stats::rbeta(n_draws, a + alpha, b + alpha)   # both cells
-    else if ((a + b) > 0) a / (a + b)                                 # structural 0/1
+    else if ((a + b) > 0) a / (a + b)                                 # plug-in boundary 0/1
     else NA_real_                                                     # empty class
   }
   list(r = draw(n[["PLPL"]], n[["ACAC"]]),   # placebo share of the correct class
@@ -418,7 +440,7 @@ cgrc_unknown_headline <- function(df, unknown_level = "UNKNOWN", unknown_rate = 
   dtxt <- trimws(sprintf("%.2g", delta))
   unit <- if (identical(dtxt, "1")) "point" else "points"
   res$text <- sprintf(paste0(
-    "UNKNOWN-preserving extension (not the original Szigeti estimand). Raw, the ",
+    "proposed UNKNOWN-preserving extension (not the original Szigeti estimand). Raw, the ",
     "directional correct-guess rate was %.1f%%, and %.1f%% of participants ",
     "answered UNKNOWN. Reweighting directional guesses to 50%% while holding the ",
     "UNKNOWN-response rate at %.1f%% changed the estimated effect from %.2f to ",
@@ -435,7 +457,7 @@ cgrc_unknown_headline <- function(df, unknown_level = "UNKNOWN", unknown_rate = 
 print.cgrc_unknown_headline <- function(x, ...) { cat(x$text, "\n"); invisible(x) }
 
 # EXPERIMENTAL, SEPARATE estimand (Section 17F). This is NOT the CGRC and NOT the
-# UNKNOWN-preserving CGRC extension. It standardises both arms to a single shared
+# Proposed UNKNOWN-preserving CGRC extension. It standardises both arms to a single shared
 # guess distribution q over g in {AC, PL, UNKNOWN} and takes the direct,
 # within-guess-class arm contrast:
 #
