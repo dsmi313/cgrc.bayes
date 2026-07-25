@@ -41,8 +41,8 @@ Fig 4 (the empirical CGR curves). Facts confirmed against it during this work:
   which is the one part still a hypothesis.
 - **`noise = "all"` (U4).** Table 1 rates 0.05 / 0.86 / 0.78 / 0.99 and DTE
   Hedges g = 0.4; stated regime "n ~ 200, CGR ~ 0.7, effect ~ 0.4 Hedges' g".
-  All match `noise = "all"`. The exact Eq. 4 SD scope is in the paper's
-  Supplementary Table 1 (not in the supplied PDFs).
+  `noise = "all"` most closely reproduces these values, but not exactly. The
+  exact Eq. 4 SD scope could not be verified from the available source.
 - **Malicious-unblinding argument (U6).** 55% body/perceptual cues (muscle
   tension 58%, stomach discomfort 27%) vs 23% mental/psychological benefits;
   placebo-microdose PANAS diff 2.1/0.8 vs ~10/~6 natural within-subject
@@ -100,8 +100,8 @@ corrects two document claims:
 - **The estimand is independently confirmed (closes U4).**
   `get_strata_ratio` / `get_strata_sample_sizes` in `src/cgrc/core.py` form
   `r = PLPL / (PLPL + ACAC)` and `s = ACPL / (ACPL + PLAC)` — identical to this
-  implementation — and the default `strata_sampling = 'all_prop'` confirms the
-  `noise = "all"` reading (CH-04).
+  implementation. The default `strata_sampling = 'all_prop'` controls pseudo-sample
+  allocation; it does **not** establish the scope of Eq. 4 outcome noise.
 - **Resample count (qualifies "100 times").** The repo's Figure-4 config
   `cgrC_low` (`config.py`) specifies `n_cgrc_trials = 32` over
   `np.linspace(0, 1, 13)` (options 32/64/96, never 100). Two caveats: the repo's
@@ -112,8 +112,8 @@ corrects two document claims:
   final published figure. If the real count is 32, the Monte Carlo error is
   ~1.8x a 100-resample assumption.
 - **Rounding (documents the reproduction default).** `get_strata_ratio` does
-  `round(x, 2)` on every stratum proportion, so `legacy_round = TRUE` is the
-  faithful reproduction path (+0.010 PANAS, +0.019 Energy vs the exact ratios).
+  `round(x, 2)` on every stratum proportion, so two-decimal proportions are part of the
+  source-faithful allocation path; integer KDE-score rounding is also required.
 
 ## The empirical dataset (reanalysed here)
 

@@ -8,12 +8,12 @@ Grouped by where it enters. "Testable here" means testable with these data.
 |---|---|---|---|
 | A1 | Unblinding is malicious: PT -> TE -> OUT. Guessing causes expectancy, which causes outcome. | If benign (OUT -> PT), adjustment removes a REAL effect and manufactures a false negative. The paper warns about this explicitly. | No |
 | A2 | The four observed strata are exchangeable with the corresponding strata in a hypothetical perfectly blinded trial. | Reweighting transports the wrong population. Someone who guesses right under poor blinding may differ from someone who guesses right by luck under good blinding. | No |
-| A3 | Within-class arm ratios r and s are the correct thing to hold fixed. | Reweighting distorts arm balance while changing guess rate. | Partly (Sec 11) |
+| A3 | Within-class arm ratios r and s are the correct thing to hold fixed. | Overall target arm mass changes with the relative class masses; each arm mean is renormalized. Whether the preserved class shares are scientifically appropriate is an assumption. | Partly (Sec 11) |
 | A4 | r and s are known constants, not estimates. | Understated uncertainty. Quantified in Sec 11: Beta-uncertain widens the interval. | Yes (Sec 11) |
 | A5 | Only stratum MEANS matter; the estimand is linear in them. | Any tail- or quantile-based question needs a different estimator. | By construction |
 | A6 | Treatment belief is adequately captured by one binary bit. | A confident correct guess and a lucky one are treated identically. Confidence data would separate them. | No |
 | A7 | Expectancy acts additively with the direct treatment effect. | The AEB model assumes linear addition; the paper flags that effects may not be additive. | No |
-| A8 | CGR = 0.50 is the right counterfactual target. | Perfect blinding is defined as chance-level guessing. Defensible, but a definition rather than a fact. | No |
+| A8 | CGR = 0.50 is the right target. | Szigeti et al. motivate chance-level guessing as approximating effective blinding; the reweighting alone does not identify a causal perfectly blinded effect. | No |
 
 ## B. Assumptions introduced by the Bayesian implementation
 
@@ -45,7 +45,7 @@ Grouped by where it enters. "Testable here" means testable with these data.
 | # | Assumption | Status |
 |---|---|---|
 | D1 | The AEB model is the right data-generating process. | It is the paper's model. Operating characteristics are conditional on it and would differ under a misspecified DGP. |
-| D2 | `noise = "all"` is the intended Eq 4 reading. | Confirmed from source: default `strata_sampling = 'all_prop'` in CorrectGuessRateCurve. See U4, SOURCES.md S4. |
+| D2 | `noise = "all"` is the intended Eq 4 reading. | Not verified from source. It is used because it most closely reproduces Hedges g and Table 1; `all_prop` is unrelated allocation logic. |
 | D3 | True Delta(0.5) equals the direct treatment effect. | Follows from the model: at CGR 0.5 the guess distribution is identical across arms, so AEB cancels. |
 | D4 | 500 trials is enough. | Monte Carlo SE on coverage is about sqrt(.05*.95/500) = 0.010, so 0.936 vs 0.95 is within noise. |
 

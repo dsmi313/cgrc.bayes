@@ -62,11 +62,13 @@ The code was named in the 2023 paper's data-availability statement all along, at
 **Confirmed from source (SOURCES.md S4):** `get_strata_ratio` /
 `get_strata_sample_sizes` form `r = PLPL/(PLPL+ACAC)` and `s = ACPL/(ACPL+PLAC)`,
 identical to this implementation - independent confirmation of the estimand.
-The default `strata_sampling = 'all_prop'` confirms the `noise = "all"` reading
-(CH-04), matching published Table 1 (0.05/0.86/0.78/0.99) and Hedges g = 0.4.
+The default `strata_sampling = 'all_prop'` concerns pseudo-sample allocation and
+does not confirm the `noise = "all"` reading. That noise mode is retained because
+it most closely reproduces published Table 1 and Hedges g; the Eq. 4 variance
+scope remains unverified.
 Two documentation corrections followed (both in CHANGELOG CH-16): the resample
 count is 32/13-grid, not 100; and `get_strata_ratio` does `round(x, 2)`, so
-`legacy_round = TRUE` is the faithful reproduction path.
+source-faithful KDE reproduction uses two-decimal proportions and integer-rounded pseudo-scores.
 **Residual:** the exact AEB-simulation SD scope (Eq. 4) was not re-derived
 line-by-line from the simulation module; the operating-characteristic match is
 strong enough that this is low priority.
@@ -104,8 +106,8 @@ minimally-important difference - "too small to be noticeable".
 No analysis of these data can settle whether unblinding is benign or malicious;
 this item stays open on principle, not for lack of a number.
 
-## U10  UNKNOWN-preserving extension: assumptions   [operating characteristics now simulated; assumptions remain]
-The six-stratum UNKNOWN extension (CH-17) is an addition by this package, not the
+## U10  proposed UNKNOWN-preserving extension: assumptions   [operating characteristics now simulated; assumptions remain]
+The six-stratum proposal (CH-17) is an addition by this package, not the
 Szigeti estimand. Two interpretive assumptions remain open by nature, and the
 one empirical gap that was open has now been addressed (CH-23):
 - **The preserved UNKNOWN arm share `t` is an assumption.** Reweighting holds
@@ -135,7 +137,7 @@ A precomputed UNKNOWN design lookup now exists too (CH-24,
 mu_aeb = 7.7), and Panel A's UNKNOWN-response-rate slider reads it, so the design
 tool covers UNKNOWN designs interactively - not only the on-demand Panel B run.
 **Still conditional:** this is validation *under A1 and A2*. It is not a claim
-that the extension outperforms the binary method in general, nor that A1/A2 hold
+that the proposal outperforms the binary method in general, nor that A1/A2 hold
 in any real trial. Differential UNKNOWN rates (A1 relaxed) and UNKNOWN responders
 who do carry expectancy (A2 relaxed) are not yet characterised; the six strata
 are also thinner than four, so `empty_stratum_rate` climbs faster at small n /

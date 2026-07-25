@@ -42,12 +42,12 @@ feel better simply because they believe it, and since more of the drug group
 correctly believe they got the drug, this "belief bonus" piles up unevenly on the
 drug side. Some of the drug's apparent benefit is really just that unevenness.
 
-The **Correct Guess Rate Curve (CGRC)** asks a what-if: *what would this trial
-have shown if only 50% had guessed right* — the coin-flip you'd see if the
-blinding had actually worked? You can't rerun the trial, but you can re-weight the
-people you already have so the maths reflects 50%-correct guessing, then re-take
-the difference between the two groups. That re-weighted difference is the CGRC
-estimate.
+Szigeti et al. motivated the **Correct Guess Rate Curve (CGRC)** with a what-if:
+what might the trial have shown at 50%-correct guessing, as an approximation to
+effective blinding? You cannot rerun the trial, but you can reweight the observed
+strata to that target and recompute the contrast. Here that contrast is treated
+as the CGRC reweighted estimand, not automatically as the causal effect from a
+genuinely perfectly blinded trial.
 
 This document does two things: (1) it **reproduces** that method on a real
 microdosing dataset, and (2) it offers a **Bayesian** version that reports the
@@ -65,8 +65,9 @@ Blinding is supposed to distribute expectancy effects equally between arms. If
 patients can work out their allocation and expect the active arm to help, that
 distribution becomes unequal and the trial tilts toward the active treatment.
 Szigeti et al. call this *activated expectancy bias* and propose the Correct
-Guess Rate Curve (CGRC): estimate what the trial would have shown had the
-correct guess rate been 50%.
+Guess Rate Curve (CGRC), motivating CGR 0.50 as an approximation to effective
+blinding. Mathematically, the curve is a sensitivity analysis over target guess
+distributions; that motivation is not by itself causal identification.
 
 This document has **two separate objectives**, kept apart throughout:
 
@@ -152,17 +153,18 @@ $$c_{obs} = \frac{n_{ACAC} + n_{PLPL}}{n}$$
 Practically: if $c_{obs} = 0.65$, 65% of participants knew what they were
 taking, so their expectancies were not balanced across arms.
 
-To ask "what if only 50% had guessed right", we reweight — put more weight on
-the wrong-guess boxes and less on the right-guess boxes. But we must not
-accidentally change the **arm balance** while doing it. Two ratios pin that down:
+To examine a target at which 50% guessed correctly, we reweight — put more weight
+on the wrong-guess boxes and less on the right-guess boxes. Two ratios preserve
+the observed arm split *within* the correct- and incorrect-guess classes:
 
 $$r = \frac{n_{PLPL}}{n_{PLPL} + n_{ACAC}}, \qquad
   s = \frac{n_{ACPL}}{n_{ACPL} + n_{PLAC}}$$
 
 Practically: $r$ is "of the people who guessed right, what fraction were on
 placebo"; $s$ is "of the people who guessed wrong, what fraction were on
-active". Holding these fixed means the reweighting only changes *how much
-guessing happened*, never *who got what*.
+active". Holding these fixed preserves class-specific arm composition, not overall arm
+mass. Overall target active/placebo mass can change with $c$, which is why each
+arm mean below is renormalised by its own total weight.
 
 ## The four weights
 
@@ -191,7 +193,9 @@ $$\Delta(c) =
 \underbrace{\frac{w_{PLPL}\mu_{PLPL} + w_{PLAC}\mu_{PLAC}}{w_{PLPL} + w_{PLAC}}}_{\text{placebo arm}}$$
 
 Each arm's mean is a weighted average of its two strata; the denominators
-renormalise within arm. $\Delta(0.5)$ is the perfectly blinded estimate.
+renormalise within arm. Szigeti et al. motivated $c=0.50$ as approximating
+effective blinding; here $\Delta(0.50)$ is the CGRC reweighted estimand, not
+automatically a causal perfectly blinded treatment effect.
 
 **The key identity.** At $c = c_{obs}$ the weights are proportional to the
 observed stratum shares, so each arm collapses to its ordinary sample mean:
@@ -492,6 +496,11 @@ rbind(
 
 ```
 
+The exact-ratio calculation reproduces the supplementary 54/58/42/46 target.
+Applying the shipped two-decimal proportion rounding instead gives 54/59/41/46;
+the one-participant difference is a source-code rounding artefact, not a change
+to the analytic estimand.
+
 ## The observed-CGR identity across all outcomes
 
 ```{r val-identity}
@@ -504,15 +513,15 @@ do.call(rbind, lapply(names(sb), function(nm) {
 }))
 ```
 
-## Faithful reproduction: Szigeti rounds the ratios
+## Source-faithful reproduction: Szigeti rounds ratios and KDE scores
 
 The identity above uses the **exact** within-class ratios $r$ and $s$. The
 author's code does not: `get_strata_ratio` in
 [`szb37/CorrectGuessRateCurve`](https://github.com/szb37/CorrectGuessRateCurve)
 (`src/cgrc/core.py`) computes each stratum proportion as `round(x, 2)` before
-forming $r$ and $s$. So the **faithful reproduction path is
-`legacy_round = TRUE`**, and the exact-ratio default used elsewhere in this
-document — while mathematically the cleaner estimand, and the one for which the
+forming $r$ and $s$, and rounds each KDE-generated pseudo-observation to an
+integer. Thus `cgr_kde(..., source_faithful = TRUE)` uses both source operations.
+The exact-ratio analytic path used elsewhere in this document — while mathematically the cleaner estimand, and the one for which the
 identity holds to machine precision — is *not* the number Szigeti actually
 computed. The impact is small but real:
 
@@ -580,9 +589,14 @@ correct guess rate; it coincides almost exactly with the **placebo-arm**
 correct-guess rate (0.7234, Section 10). This is no longer a hypothesis — see
 `reports/UNRESOLVED.md` U3 and `reports/SOURCES.md`.
 
-## Original KDE procedure vs the analytic curve
+## Exact/unrounded KDE diagnostic vs the analytic curve
 
-This is the section that separates the three possible sources of difference.
+This diagnostic deliberately sets `source_faithful = FALSE`: it uses exact
+within-class ratios and does not round pseudo-scores, so its Monte Carlo limit is
+the exact analytic estimand. It is not presented as a line-by-line source
+reproduction. The source-faithful figures above instead use the default
+`source_faithful = TRUE`, with two-decimal allocation ratios and integer-rounded
+KDE pseudo-scores.
 
 ```{r val-kde, cache=TRUE}
 set.seed(11)
@@ -592,9 +606,9 @@ kde_tab <- do.call(rbind, lapply(names(sb), function(nm) {
   d <- sb[[nm]]; o <- cgr_observed(cgr_strata(d))
   rbind(
     cbind(outcome = nm, target = "observed",
-          cgr_kde_ladder(d, o,   reps = c(32, 100, 1000, 10000))),
+          cgr_kde_ladder(d, o,   reps = c(32, 100, 1000, 10000), source_faithful = FALSE)),
     cbind(outcome = nm, target = "0.50",
-          cgr_kde_ladder(d, 0.5, reps = c(32, 100, 1000, 10000))))
+          cgr_kde_ladder(d, 0.5, reps = c(32, 100, 1000, 10000), source_faithful = FALSE)))
 }))
 kde_tab[, c("outcome","target","n_rep","kde_est","kde_mcse","mean_p",
             "analytic","diff_from_analytic")]
@@ -613,9 +627,9 @@ Three conclusions:
    100-resample value and larger than the 0.12 discrepancy this document flags
    in the paper's reference-line placement. PANAS at CGR 0.50 wanders by tens of
    a percent purely from resampling noise.
-3. **The averaged p-values reproduce the published ones** (PANAS ~0.41 vs 0.43;
-   Energy ~0.043 vs 0.04), confirming the port is faithful rather than merely
-   plausible.
+3. **This exact/unrounded ladder is a convergence diagnostic, not the source
+   reproduction.** Source-faithful output can retain a small rounding difference
+   even with many resamples; the figure-reproduction chunks use that mode.
 
 So the difference between the original and this document is **computational
 stability plus a change of inferential summary** — not a change of estimand.
@@ -638,7 +652,7 @@ cc <- cgr_conjugate(panas, grid = seq(0, 1, length.out = 13),
                     n_draws = 40000, direction = 1)
 o  <- cgr_observed(cgr_strata(panas))
 at <- function(g, cgr) g[which.min(abs(g$cgr - cgr)), ]
-do.call(rbind, lapply(c(`observed CGR` = o, `perfect blinding` = 0.5), function(cg) {
+do.call(rbind, lapply(c(`observed CGR` = o, `target CGR 0.50` = 0.5), function(cg) {
   k <- at(kc, cg); b <- at(cc, cg)
   data.frame(
     `Delta(c): KDE / posterior` = sprintf("%.2f / %.2f", k$est, b$est),
@@ -835,7 +849,7 @@ design?". Run it at your own $n$ and $p_{CG}$ before trusting the adjustment.
 
 Equation 4 does not state whether the sd of the gated DTE/AEB terms applies to
 everyone (`noise = "all"`) or only to the affected subgroup (`noise = "arm"`).
-Two independent lines of evidence settle it:
+The available numerical evidence favours `"all"`, but does not settle the source interpretation:
 
 | Evidence | published | `"all"` | `"arm"` |
 |---|---|---|---|
@@ -845,13 +859,11 @@ Two independent lines of evidence settle it:
 | Table 1 sig. rate, DTE off/AEB on | 0.78 | **0.826** | 0.930 |
 | Table 1 sig. rate, DTE on/AEB on | 0.99 | **0.992** | 0.998 |
 
-`"all"` is now the documented default on evidence, not convenience.
-
-**Caveat.** The author's source code was **not located** — the public repository
-serves the data file but returns 404 for source paths. This is convergent
-empirical evidence, not verification against the original implementation.
-Section 9's figures are therefore a **reproduction consistent with the published
-operating characteristics**, not a verified line-by-line reproduction.
+`"all"` is the documented default because it most closely reproduces the
+published Hedges g and operating characteristics. The exact scope of the Eq. 4
+variance terms could not be verified from the available source. In particular,
+`strata_sampling = "all_prop"` controls CGRC pseudo-sample allocation and says
+nothing about generative outcome noise. The agreement is close, not exact.
 
 ---
 
@@ -1430,7 +1442,8 @@ effect.**
 2. **Collider bias.** Guess is a downstream consequence of both treatment and
    outcome. Conditioning on it can induce association where none exists.
 3. **Transportability.** The four observed strata are assumed to represent the
-   corresponding strata in a hypothetical perfectly blinded population. People
+   corresponding strata under the target reweighting. This does not establish
+   exchangeability with a hypothetical perfectly blinded population: people
    who guess correctly under poor blinding may not be exchangeable with those
    who would guess correctly by chance under good blinding.
 4. **Conditioning on observed guess behaviour.** The estimand holds $r$ and $s$
@@ -1522,7 +1535,7 @@ repository README; this section is only the front door.
 # External validation: three independent trials
 
 The microdose data above are the study this method was built on. To see how the
-tool behaves on *other* trials — and to exercise the UNKNOWN-preserving extension
+tool behaves on *other* trials — and to exercise the proposed UNKNOWN-preserving extension
 on real "I do not know" responses — this section runs three further public,
 audited datasets through exactly the pipeline the Shiny app's *Analyse your own
 trial* panel uses: an input audit, then either the binary four-stratum `cgrc()`
@@ -1596,7 +1609,7 @@ app_summary <- function(a) {
   pct <- function(p) sprintf("%.0f%%", 100 * p)
   data.frame(
     Quantity = c("Analysed n", "Observed correct-guess rate",
-                 "Raw effect (at observed CGR)", "Adjusted effect (CGR 0.50)",
+                 "Raw randomized contrast (at observed CGR)", "CGRC-adjusted contrast (target CGR 0.50)",
                  "Adjusted 95% CrI", "P(favourable): raw → adjusted",
                  sprintf("P(exceeds %.3g-unit threshold): raw → adjusted", a$delta)),
     Value = c(as.character(nrow(a$trial)), sprintf("%.3f", ocg),
@@ -1672,17 +1685,16 @@ in **meaningful benefit**, so the acute effect is large, not merely non-zero.
 app_rope(cav_vas)
 ```
 
-Well-being shows nothing to adjust: a raw active-minus-placebo difference near
-zero with P(favourable) only `r round(100 * cav_wb$head$p_dir_obs)`%, essentially
-unchanged at perfect blinding (`r round(100 * cav_wb$head$p_dir_blind)`%). The
+Well-being shows little sensitivity to adjustment: a raw active-minus-placebo
+difference near zero with P(favourable) only `r round(100 * cav_wb$head$p_dir_obs)`%,
+essentially unchanged at target CGR 0.50 (`r round(100 * cav_wb$head$p_dir_blind)`%). The
 dosing-day VAS — the positive control — is the opposite: a raw effect of
 `r round(cav_vas$fit$summary$post_mean[1], 1)` points with P(favourable)
 `r round(100 * cav_vas$head$p_dir_obs)`%, and it *survives* CGR adjustment
-(`r round(100 * cav_vas$head$p_dir_blind)`% at CGR 0.50). A real acute
-pharmacological signal that reweighting does not explain away — but note the
-primary caveat: a genuine acute effect can itself drive the correct guess, so
-here low attenuation is *expected* and is not by itself evidence that expectancy
-was absent.
+(`r round(100 * cav_vas$head$p_dir_blind)`% at CGR 0.50). The observed positive
+control remains favourable after reweighting. A genuine acute effect can itself
+drive the correct guess, so low attenuation is not a causal decomposition and is
+not by itself evidence that expectancy was absent.
 
 ## Santana-Penín et al. (2023): sham-controlled dental therapy — UNKNOWN
 
@@ -1711,10 +1723,10 @@ app_curve(san, "favourable")
 ```
 
 Here the ROPE is the point. P(favourable) is essentially 100%, but splitting the
-posterior at the 1.5-point MID shows that at perfect blinding only about
+posterior at the 1.5-point MID shows that at target CGR 0.50 only about
 `r round(100 * san$rope$p_benefit[which.min(abs(san$rope$cgr - 0.5))])`% of the mass
-is a *meaningful* benefit; the rest is practically negligible. The effect is real
-and favourable, but only borderline clinically important.
+is a *meaningful* benefit; the rest is practically negligible. The adjusted
+contrast favours treatment but is only borderline clinically important.
 
 ```{r ext-santana-rope, fig.height=4.4}
 app_rope(san, xlab = "directional CGR (among AC/PL responses)")
@@ -1734,8 +1746,8 @@ essentially 100%, and barely moves from the raw estimate
 because the directional CGR (`r round(san$fit$observed_directional_cgr, 3)`) is
 already close to 0.5. The decision-relevant number is the probability the effect
 clears the 1.5-point MID: `r round(100 * san$head$p_meaningful_obs)`% raw →
-`r round(100 * san$head$p_meaningful_blind)`% adjusted — a real, favourable effect
-sitting right at the edge of clinical importance.
+`r round(100 * san$head$p_meaningful_blind)`% adjusted — a favourable adjusted
+contrast sitting right at the edge of clinical importance.
 
 ## Lii et al. (2023): ketamine masked by surgical anaesthesia — UNKNOWN
 
@@ -1774,25 +1786,25 @@ Guessing here is near chance (directional CGR
 could not tell ketamine from placebo. That is exactly the regime where CGR
 adjustment *should* do almost nothing — and it does. The raw MADRS advantage of
 `r round(ket$fit$summary$post_mean[1], 1)` points (favourable = lower) barely
-moves to `r round(ket$fit$summary$post_mean[2], 1)` at perfect blinding, with
+moves to `r round(ket$fit$summary$post_mean[2], 1)` at target CGR 0.50, with
 P(favourable) `r round(100 * ket$head$p_dir_obs)`% →
-`r round(100 * ket$head$p_dir_blind)`%. Here the CGRC is *confirmatory*: because
-blinding held, the modest antidepressant signal is not an expectancy artefact —
-and with all six strata populated, the reweighting is well-defined rather than
-resting on a thin cell.
+`r round(100 * ket$head$p_dir_blind)`%. The workflow therefore changes little in
+this near-chance-guessing example. With all six strata populated, the reweighting
+is also well-defined rather than resting on a thin cell; neither observation
+establishes a causal mechanism.
 
 ## What the three trials add
 
 - **Cavanna** is a clean binary example with all four strata populated. Its
-  positive-control VAS shows a real drug effect that survives adjustment while its
+  positive-control VAS contrast remains favourable after adjustment while its
   well-being outcome is null, and it carries the reconstructed-guess and
   effect-drives-guessing caveats explicitly.
 - **Santana** is the strongest case for preserving UNKNOWN: a third of the sample
   answered "I do not know," and complete-case restriction both strands them and
   distorts the estimate through a one-person stratum. The extension keeps the
-  whole trial and finds a favourable pain effect at the clinical MID.
+  whole trial and finds a favourable adjusted pain contrast at the clinical MID.
 - **Lii** is the near-chance case: adjustment barely changes anything, which is
-  the correct behaviour when blinding held, and it exercises the fully-populated
+  a qualitatively sensible pattern for near-chance guessing, and it exercises the fully-populated
   six-stratum estimand.
 
 Across all three, the behaviour is what the method predicts: CGR adjustment moves
@@ -1825,10 +1837,10 @@ independent of and not endorsed by these authors.
    and the author's 2024 review cites ~65–70%. The Fig 4 reference line is
    therefore misplaced by ~0.07 — the error the Section 4 identity check catches.
    Worth one confirmation from the author. See `reports/SOURCES.md`.
-4. **Exact AEB simulation source not located.** The `noise = "all"` resolution
-   now matches the paper's published Table 1 (0.05/0.86/0.78/0.99) and Hedges
-   g = 0.4, but the exact Eq. 4 SD scope lives in the paper's Supplementary
-   Table 1, so this is not yet a line-by-line code check.
+4. **Exact Eq. 4 variance scope remains unverified.** `noise = "all"` closely
+   reproduces the paper's Table 1 (0.05/0.86/0.78/0.99) and Hedges g = 0.4,
+   but the available source did not verify which observations receive each
+   variance term. `all_prop` is unrelated pseudo-sample allocation logic.
 5. **No head-to-head operating-characteristic comparison** of the KDE procedure
    against the Bayesian one. Section 9 characterises the estimand, not the two
    procedures against each other.

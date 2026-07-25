@@ -9,11 +9,13 @@ uncertainty around the published quantity, not a different quantity. Separately
 labelled **extensions** (notably the UNKNOWN-preserving estimator, below) do
 introduce genuinely different estimands and are marked as such.
 
-The CGRC asks a counterfactual of an imperfectly blinded trial: *what would the
-treatment effect have been if the correct guess rate had been 50% — i.e. if
-blinding had held?* It reweights the four treatment × guess strata to a target
-guess rate while holding the within-class arm ratios fixed, so only *how much
-guessing happened* changes, never *who got what*.
+Szigeti et al. motivated CGR = 0.50 as approximating a result under effective
+blinding. Here, `Delta(0.50)` is treated more narrowly as the CGRC reweighted
+estimand: a sensitivity analysis at directional guessing by chance, not proof of
+the causal effect in a genuinely perfectly blinded trial. The method preserves
+the observed arm split within the correct- and incorrect-guess classes. Overall
+target arm mass can change with the relative class masses, so each treatment-arm
+mean is renormalized by its own total weight.
 
 ## Install
 
@@ -122,12 +124,12 @@ a warning that CGR adjustment is fragile for your design.
 | `cgr_jags(df, likelihood)` | JAGS backend; `"normal"` or robust `"t"` likelihood |
 | `cgr_check_backends(df)` | verify the conjugate and JAGS posteriors agree |
 | `cgr_rope(df)` | region-of-practical-equivalence decomposition (harm/negligible/benefit) |
-| `cgr_kde(df, cgr)`, `cgr_kde_curve(df)` | faithful port of the original KDE resampling |
+| `cgr_kde(df, cgr)`, `cgr_kde_curve(df)` | source-faithful KDE resampling by default; set `source_faithful = FALSE` for exact ratios and unrounded scores |
 | `cgr_reference_line_test(df, orig_cgr)` | check a reference line against the observed-CGR identity |
 | `szigeti_panel(cgr_kde_curve(df), ...)` | reproduce the published twin-axis figure |
 | `cgr_strata`, `cgr_ratios`, `cgr_weights`, `cgr_delta` | the estimand primitives |
 | `sim_aeb(...)` | the activated-expectancy-bias generative model |
-| `cgrc_unknown(df)` | UNKNOWN-preserving extension: six-stratum adjuster keeping "I do not know" |
+| `cgrc_unknown(df)` | proposed UNKNOWN-preserving extension: six-stratum adjuster keeping "I do not know" |
 | `cgrc_unknown_headline(df)` | two-probability plain-language summary of the UNKNOWN extension |
 | `cgr_unknown_jags(df, pooling)` | six-stratum JAGS backend (`"normal"`/`"t"`; `"none"`/`"partial"` pooling) |
 | `cgr_unknown_check_backends(df)` | verify the UNKNOWN conjugate and JAGS posteriors agree |
@@ -141,10 +143,10 @@ a warning that CGR adjustment is fragile for your design.
 Real trials often let a participant answer **"I do not know"** to the guess
 question. Those responses must not be silently dropped, counted as incorrect
 guesses, counted as placebo, or split across arms without an explicit assumption.
-`cgrc.bayes` adds an **UNKNOWN-preserving extension** that keeps them as a third
+`cgrc.bayes` adds a **proposed UNKNOWN-preserving extension of the CGRC reweighting scheme** that keeps them as a third
 response category.
 
-> **This is an extension implemented by cgrc.bayes. It is not part of the
+> **This is a proposed extension implemented by cgrc.bayes. It is not part of the
 > original CGRC formulation of Szigeti et al.** The binary four-stratum method
 > and every published result above are unchanged.
 
@@ -172,17 +174,20 @@ weight-averaged stratum mean within that arm. Key properties:
 
 - **Observed-value identity.** `Δ(c_obs, u_obs)` equals the raw active−placebo
   mean difference exactly (each within-arm weight reduces to `n_stratum/n_total`).
-- **Reduction.** At `u = 0` every formula collapses **exactly** to the binary
-  `cgr_delta()` — the extension is a strict generalisation.
-- **Empty cells are safe.** An empty stratum forces its own weight to zero
-  through `r/s/t` (e.g. empty `ACU` ⇒ `t = 0` ⇒ `w_ACU = 0`), so a
-  structurally-zero cell is never estimated. An empty *correct* or *incorrect*
-  directional class is a clear "undefined estimand" error, not a silent guess.
+- **Reduction.** The six-stratum estimand reduces algebraically to the binary
+  CGRC estimand at `u = 0`.
+- **Observed zero cells are fragile.** Under the default plug-in formulation, an
+  observed zero within a nonempty response class makes its preserved arm share
+  0 or 1, so that cell receives zero target weight. This remains mathematically
+  defined but is a strong empirical assumption in sparse samples and is flagged.
+  An empty required response class remains an "undefined estimand" error.
 
 **Why UNKNOWN ≠ an incorrect guess.** A participant who says "I don't know" has
 made no directional claim; scoring them as wrong (or as placebo) invents
 information the trial did not collect. Holding `u` fixed and reweighting only the
-directional guesses keeps the UNKNOWN mass where it was observed.
+directional guesses keeps the UNKNOWN mass where it was observed. The extension
+preserves the observed arm split within the UNKNOWN class through `t`; it does
+not force overall active/placebo mass to remain fixed as `c` or `u` changes.
 
 **Interpretation and limits.** `c = 0.50` means *directional guessing at chance
 with the UNKNOWN rate held fixed* — **not** "perfect blinding", and not proof
@@ -229,7 +234,7 @@ with a full input audit and downloadable cleaned data, exclusion log, and report
 | `R/01_estimand.R` | strata, ratios, weights, Δ(c), analytic curve (base R only) |
 | `R/02_bayes.R` | `nig_draws()` — Normal-Inverse-Gamma posterior; conjugate CGR curve |
 | `R/03_jags.R` | corrected JAGS backend and `cgr_check_backends()` |
-| `R/04_kde.R` | faithful port of the original KDE resampling procedure |
+| `R/04_kde.R` | explicit source-faithful and exact/unrounded KDE resampling modes |
 | `R/05_sim.R` | AEB generative model and operating-characteristics study (+ UNKNOWN-aware variant) |
 | `R/06_plot.R` | figures and summary tables |
 | `R/07_rope.R` | `cgr_rope()` region-of-practical-equivalence decomposition |

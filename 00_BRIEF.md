@@ -67,13 +67,11 @@ Hedges' g = 0.40.
 
 `"all"` matches on every row; `"arm"` is badly off on rows 2 and 3.
 
-**Caveat, stated plainly.** Szigeti's source code was NOT located. The public
-repo `szb37/mcrds_public` serves `data/pacutes.csv` but returns 404 for
-`README.md` and for every source path probed. This is strong convergent
-empirical evidence, not a reading of the author's code. Figure 3 should be
-described as a **reproduction consistent with the published operating
-characteristics**, not a verified line-by-line reproduction. If the author can
-supply the generative code, this should be re-checked.
+**Caveat, stated plainly.** The CGRC source repository was located, but the exact
+scope of the Eq. 4 variance terms could not be verified from the available
+source. `noise = "all"` is used because it most closely reproduces the published
+Hedges g and operating characteristics. `strata_sampling = "all_prop"` concerns
+pseudo-sample allocation and does not confirm the generative noise scope.
 
 **Action:** `noise = "all"` is now the documented default with the evidence
 recorded inline. The `"arm"` option is retained so the comparison can be re-run.
@@ -128,7 +126,7 @@ resolved.** Flagged for the author.
 
 ### F4. KDE resampling is an inefficient Monte Carlo estimator of the analytic value
 
-A faithful port of the original procedure (sklearn `KernelDensity` with default
+The exact/unrounded KDE comparison (sklearn `KernelDensity` with default
 parameters, i.e. Gaussian kernel and bandwidth 1.0; resample to target CGR; fit
 `outcome ~ treatment`; average estimates and p-values) gives:
 
@@ -153,9 +151,10 @@ Two conclusions, and they are the core of the contribution:
    0.12–0.29 points on the VAS/PANAS scales. PANAS at CGR 0.50 moves from 0.895
    to 1.090 — roughly 20% — purely from resampling noise.
 
-The averaged p-values also reproduce the published ones closely (PANAS 0.409 vs
-published 0.43; Mood 0.384 vs 0.42; Energy 0.043 vs 0.04; CPS 0.504 vs 0.52),
-which is what confirms the port is faithful rather than merely plausible.
+These exact/unrounded averaged p-values are close to the published ones (PANAS
+0.409 vs 0.43; Mood 0.384 vs 0.42; Energy 0.043 vs 0.04; CPS 0.504 vs 0.52),
+but this convergence table is not the source-faithful mode. Source-faithful KDE
+also applies two-decimal allocation ratios and integer pseudo-score rounding.
 
 **Framing consequence.** The Bayesian version should NOT be sold as better
 inference about the trial. Its defensible claims are narrower and stronger: it

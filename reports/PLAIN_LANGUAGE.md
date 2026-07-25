@@ -7,15 +7,15 @@ the end are the parts people usually get wrong.
 
 You run a trial. Half get the drug, half get placebo. At the end you ask
 everyone to guess which they got - and 65% guess right. That is a problem,
-because people who think they got the real drug tend to feel better *because*
-they think that. Since more of the drug group correctly believe they got the
-drug, the "feeling better because you believe" bonus is spread unevenly. Some
-of your apparent drug effect is really that unevenness.
+because people who think they got the real drug may respond through expectancy.
+That imbalance lets expectancy-mediated pathways contribute unevenly to the
+observed randomized treatment contrast.
 
 ## The idea
 
-Ask a hypothetical: what would this trial have shown if only 50% had guessed
-right - which is what you would see if the blinding had actually worked?
+Szigeti et al. motivate a hypothetical target at which only 50% guessed right,
+as an approximation to effective blinding. Here it is treated as the CGRC
+reweighted estimand, not automatically as a causal perfectly blinded effect.
 
 You cannot rerun the trial. But you can reweight the people you already have.
 
@@ -37,15 +37,14 @@ just the share of people in the two "right" boxes.
 To simulate 50% correct guessing, put half the total weight on the two "right"
 boxes and half on the two "wrong" boxes.
 
-But there is a trap. If you are careless, you also change the drug-to-placebo
-balance - and then you would be comparing a different trial entirely. So you
-hold two proportions fixed:
+Two proportions preserve arm composition within each guess-correctness class:
 
 - **r**: among people who guessed right, what fraction were on placebo?
 - **s**: among people who guessed wrong, what fraction were on the drug?
 
-Keeping these fixed means the reweighting changes only *how much guessing
-happened*, never *who got what*. That is the whole trick.
+Keeping these fixed does not preserve overall drug-to-placebo target mass as
+the correct-guess target changes. Each arm's weighted mean is therefore
+renormalised by that arm's own total weight.
 
 Then you compute the drug group's average and the placebo group's average using
 the new weights, and take the difference. That is Delta(0.5).

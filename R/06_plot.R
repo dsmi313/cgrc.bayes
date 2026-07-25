@@ -55,7 +55,7 @@ cgr_plot <- function(cur, obs_cgr, title = NULL,
                    legend.position = "top")
 }
 
-# One-dimensional plot for the UNKNOWN-preserving extension. The x-axis is the
+# One-dimensional plot for the proposed UNKNOWN-preserving extension. The x-axis is the
 # DIRECTIONAL correct-guess rate (correct among AC/PL responders), NOT the overall
 # correct-guess rate. c = 0.50 is directional guessing at chance, with the UNKNOWN
 # rate held fixed - deliberately not labelled "perfect blinding" unqualified. The

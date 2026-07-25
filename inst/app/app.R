@@ -151,7 +151,7 @@ ui <- navbarPage(
                       max = U_MAX, value = 0, step = 0.05),
           div(class = "muted",
               "0 = the original binary design tool. Above 0 switches to the",
-              "UNKNOWN-preserving six-stratum design: the correct-guess rate above",
+              "proposed UNKNOWN-preserving six-stratum design: the correct-guess rate above",
               "is then the DIRECTIONAL rate (among AC/PL responders) and this",
               "UNKNOWN rate is held fixed. Snapped to the nearest simulated level.")),
         tags$hr(),
@@ -356,14 +356,14 @@ server <- function(input, output, session) {
           tags$li("Balanced random assignment (each arm with probability 0.5)."),
           tags$li("The selected DIRECTIONAL correct-guess rate applies symmetrically among directional (AC/PL) responders; the UNKNOWN rate is equal across arms and held fixed."),
           tags$li("The UNKNOWN-aware generative model is used: UNKNOWN responders carry no expectancy (B_TE = 0)."),
-          tags$li("The target is the direct treatment effect (the reweighted estimate at a 50% directional guess rate, UNKNOWN rate held fixed)."),
-          tags$li("Both directional guess classes must be present, and the UNKNOWN class when the UNKNOWN rate is above zero; structural-zero cells are permitted (the estimand errors only when a required class is absent)."),
+          tags$li("Under this simulation model, the known target is the direct-effect parameter; this does not establish causal identification in real trials."),
+          tags$li("Both directional guess classes must be present, and the UNKNOWN class when the UNKNOWN rate is above zero; an observed zero cell in a nonempty class produces a fragile plug-in boundary share of 0 or 1; the estimand errors only when a required class is absent."),
           tags$li("Results are conditional on the selected true-effect and expectancy magnitudes.")
         ) else tagList(
           tags$li("Balanced random assignment (each arm with probability 0.5)."),
           tags$li("The selected correct-guess rate applies symmetrically to both arms unless otherwise modelled."),
           tags$li("The activated-expectancy-bias (AEB) generative model is used."),
-          tags$li("The target is the direct treatment effect (the CGR-adjusted estimate at a 50% guess rate)."),
+          tags$li("Under this simulation model, the known target is the direct-effect parameter; this does not establish causal identification in real trials."),
           tags$li("All four treatment-by-guess strata must be nonempty for the estimand to be defined."),
           tags$li("Results are conditional on the selected true-effect and expectancy magnitudes.")))))
   })
@@ -743,9 +743,9 @@ server <- function(input, output, session) {
       HTML(sprintf(
         "<b>At a glance.</b>
          <table style='width:100%%;margin-top:6px;border-collapse:collapse;'>%s</table>
-         <div class='muted' style='margin-top:8px;'>The <b>adjusted effect</b> is a
-         counterfactual under the CGRC assumptions — what the effect would have been
-         at a 50%% correct-guess rate — <i>not</i> automatically the true
+         <div class='muted' style='margin-top:8px;'>The <b>adjusted contrast</b> is
+         the CGRC reweighted estimand at a 50%% correct-guess rate — <i>not</i>
+         automatically the true
          pharmacological effect. Probabilities are continuous; no significant/not
          cut-off is imposed.</div>", rows)))
   })
@@ -760,6 +760,13 @@ server <- function(input, output, session) {
     else { st <- cgr_strata(f$trial); nn <- lengths(st)[STRATA] }
     smallest <- min(nn[nn > 0])
     thin <- smallest < THIN_STRATUM
+    boundary <- character()
+    if (f$mode == "unknown") {
+      dg <- cgr_unknown_estimable(st, f$ufit$target_unknown_rate,
+                                  c(0.5, f$ufit$observed_directional_cgr),
+                                  warn = FALSE)
+      boundary <- dg$boundary_cells
+    }
     asym <- is.finite(gr$active) && is.finite(gr$placebo) &&
             abs(gr$active - gr$placebo) > 0.2
     pct <- function(p) if (is.na(p)) "n/a" else sprintf("%.0f%%", 100 * p)
@@ -767,22 +774,26 @@ server <- function(input, output, session) {
       " <b>Warning:</b> the smallest observed stratum has <b>%d</b> participants ",
       "(&lt; %d) — the reweighted estimate is fragile here."), smallest, THIN_STRATUM)
       else ""
+    boundary_txt <- if (length(boundary)) paste0(
+      " <b>Boundary-share warning:</b> observed zero cell(s) ",
+      paste(boundary, collapse = ", "),
+      " imply a plug-in within-class arm share of 0 or 1; this is fragile.") else ""
     asym_txt <- if (asym) sprintf(paste0(
       " <b>Arm asymmetry:</b> active-arm and placebo-arm correct-guess rates differ ",
       "by %.0f points; a single overall rate would hide this."),
       100 * abs(gr$active - gr$placebo)) else ""
     ug <- if (gr$guess_unknown > 0) sprintf(" / UNKNOWN %d", gr$guess_unknown) else ""
-    div(class = if (thin || asym) "verdict warn feas" else "verdict feas",
+    div(class = if (thin || asym || length(boundary)) "verdict warn feas" else "verdict feas",
       HTML(sprintf(
         "<b>Blinding & allocation.</b>
          Overall correct-guess rate <b>%s</b>;
          active-arm <b>%s</b>; placebo-arm <b>%s</b>.
          Allocation — active <b>%d</b>, placebo <b>%d</b>.
          Guesses — active %d, placebo %d%s.
-         Smallest occupied stratum <b>%d</b>.%s%s",
+         Smallest occupied stratum <b>%d</b>.%s%s%s",
         pct(gr$overall), pct(gr$active), pct(gr$placebo),
         gr$n_active, gr$n_placebo, gr$guess_active, gr$guess_placebo, ug,
-        smallest, warn_txt, asym_txt)))
+        smallest, warn_txt, boundary_txt, asym_txt)))
   })
 
   # A short preview of the mapped analysis frame, so the column mapping can be

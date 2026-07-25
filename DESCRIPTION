@@ -6,19 +6,19 @@ Authors@R: person("Dave", "Smith", role = c("aut", "cre"),
     email = "fish.dzs0017@gmail.com")
 Description: A reproduction of the Correct Guess Rate Curve (CGRC) method of
     Szigeti et al. (2023) and an alternative implementation that expresses the
-    uncertainty around the CGR-adjusted treatment effect as a posterior
+    uncertainty around the CGRC-adjusted treatment contrast as a posterior
     distribution rather than through resampling. Provides the four-stratum
     estimand, a Normal-Inverse-Gamma conjugate posterior, a corrected JAGS
-    backend and a backend-agreement check, a faithful port of the original
+    backend and a backend-agreement check, an explicit source-faithful mode for the original
     kernel-density resampling procedure, the activated-expectancy-bias
     generative model with a repeated-simulation operating-characteristics
     study, a region-of-practical-equivalence decomposition, and the
     reference-line diagnostic. The estimand is unchanged throughout; this is a
     different way of computing uncertainty around the published quantity, not a
     different quantity. Also provides an additive, clearly-labelled
-    UNKNOWN-preserving extension that keeps an observed "I do not know" guess as
-    a third response category (a six-stratum generalisation that reduces exactly
-    to the four-stratum method when there are no UNKNOWN responses); this
+    proposed UNKNOWN-preserving extension that keeps an observed "I do not know"
+    guess as a third response category. Its six-stratum estimand reduces
+    algebraically to the binary CGRC estimand when UNKNOWN mass is zero; this
     extension is implemented by this package and is not part of the original
     CGRC formulation.
 License: MIT + file LICENSE
