@@ -448,11 +448,11 @@ shrinks everything (all four sets of numbers are in the table above):
   footing, its adjusted interval crossing zero.
 - **Energy VAS** is the survivor: even after adjustment its effect stays clearly on the
   favourable side — its adjusted interval sits entirely above zero and its
-  P(favourable) is essentially 100%. If any of these subjective outcomes reflects
-  something beyond expectancy, this is the strongest candidate.
+  P(favourable) is essentially 100%. Among these subjective outcomes, Energy VAS is
+  the least sensitive to the CGRC adjustment.
 - **Cognitive performance** is flat with or without adjustment: near zero throughout,
-  with P(favourable) barely above a coin flip. There is no effect for unblinding to
-  inflate, and the method correctly leaves it unchanged — a reassuring null outcome.
+  with P(favourable) barely above a coin flip. The contrast remains near zero across
+  the curve, so the adjustment changes little — a reassuring null example.
 
 None of this proves *why* the mood-type effects shrink. What it shows is that they are
 **fragile to the blinding assumption** in a way the energy effect, and the (absent)
@@ -857,6 +857,10 @@ Worked-example datasets: Cavanna et al. (2022) *Transl. Psychiatry* 12:307; Sant
 et al. (2023) *Ann. Anat.* 250:152117; Lii et al. (2023) *Nat. Mental Health* 1:876–886.
 This project reproduces and re-analyses published work; it is independent of and not
 endorsed by the original authors.
+
+Full causal-inference citation: Loewinger G, Stensrud MJ, Nayak SM, Yaden D, Levis AW.
+2026. "Causal Inference in Studies with Functional Unmasking: Psychedelics and Beyond."
+medRxiv preprint. <https://doi.org/10.64898/2025.12.05.25341713>.
 
 ```{r s-session, echo=FALSE}
 sessionInfo()
