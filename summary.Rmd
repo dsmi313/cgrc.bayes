@@ -847,9 +847,11 @@ The first three references underpin this work; full per-finding citations are in
   'placebo group' and 'placebo control': a case study in psychedelic microdosing."
   *Scientific Reports* 13:12107. <https://doi.org/10.1038/s41598-023-34938-7>
 - **Causal-interpretation source** — formal analysis of the estimand induced by
-  CGRC-type reweighting. Loewinger G, Stensrud MJ, Nayak SM, Yaden D, Levis AW.
-  2026. "Causal Inference in Studies with Functional Unmasking: Psychedelics and
-  Beyond." medRxiv preprint. <https://doi.org/10.64898/2025.12.05.25341713>.
+  CGRC-type reweighting.
+
+  Loewinger G, Stensrud MJ, Nayak SM, Yaden D, Levis AW. 2026. "Causal Inference in
+  Studies with Functional Unmasking: Psychedelics and Beyond." medRxiv preprint.
+  <https://doi.org/10.64898/2025.12.05.25341713>.
 - **Empirical dataset** — source of the public week-1 data reanalysed here.
   Szigeti B, et al. 2021. "Self-blinding citizen science to explore psychedelic
   microdosing." *eLife* 10:e62878. <https://doi.org/10.7554/eLife.62878>
