@@ -167,8 +167,10 @@ and $s$ is the fraction of the *wrong*-guessers who got the drug.
 
 Now the "what if." To imagine a world with a chosen guess rate $c$, we simply
 **re-weight** the four strata — give them new relative importances that add up to a
-guess rate of $c$ instead of $c_{obs}$ — while keeping each side's internal balance
-fixed. The weights are $w_{ACAC}=c(1-r)$, $w_{PLPL}=cr$, $w_{ACPL}=(1-c)s$, and
+guess rate of $c$ instead of $c_{obs}$ — while preserving the observed arm split
+within the correct- and incorrect-guess classes. Overall target arm mass can
+change with $c$, so each arm is renormalized in its weighted mean. The weights
+are $w_{ACAC}=c(1-r)$, $w_{PLPL}=cr$, $w_{ACPL}=(1-c)s$, and
 $w_{PLAC}=(1-c)(1-s)$. With those weights the **CGRC-adjusted treatment
 contrast** is the re-weighted "drug average minus placebo average":
 $$
@@ -309,7 +311,7 @@ scen <- c("no effect / no expectancy", "effect / no expectancy",
 knitr::kable(data.frame(scenario = scen,
   `unadjusted p<0.05 (2-sided)` = round(op$freq_sig, 3),
   `published Table 1` = c(0.05, 0.86, 0.78, 0.99), check.names = FALSE),
-  caption = "AEB simulation, n = 230, CGR = 0.7, 500 trials: reproduces the published significance rates")
+  caption = "AEB simulation, n = 230, CGR = 0.7, 500 trials: closely reproduces the published significance rates")
 ```
 
 **Check 2 — The self-test passes for every outcome.** Recall the observed-CGR
@@ -336,7 +338,8 @@ and the resampling smoothing leaves those averages untouched.)
 
 ```{r s-kde, cache=TRUE}
 set.seed(11)
-kl <- cgr_kde_ladder(panas, cgr_observed(cgr_strata(panas)), reps = c(32, 100, 1000, 10000))
+kl <- cgr_kde_ladder(panas, cgr_observed(cgr_strata(panas)),
+                     reps = c(32, 100, 1000, 10000), source_faithful = FALSE)
 knitr::kable(kl[, c("n_rep", "kde_est", "kde_mcse", "analytic", "diff_from_analytic")],
              digits = 3, caption = "KDE resampling converges on the analytic Delta (PANAS, observed CGR)")
 ```
@@ -577,7 +580,8 @@ uncomfortable choice — throw those participants away (discarding randomised da
 recode them as if they had guessed a specific arm (inventing a belief they never
 reported). Neither is good.
 
-**`cgrc.bayes` adds a six-box extension** — this is our addition, *not* part of the
+**`cgrc.bayes` adds a proposed six-box UNKNOWN-preserving extension of the CGRC
+reweighting scheme** — this is our addition, *not* part of the
 original Szigeti et al. method — that keeps "I don't know" (written `U`, for UNKNOWN)
 as a genuine third answer:
 $$
@@ -588,10 +592,13 @@ people who committed to active or placebo) becoming no better than chance, while
 leaving the *rate of "I don't know" answers untouched* — because uncertainty is a
 real, informative response, not an error to be corrected. In symbols the target is
 $\Delta(0.50,\ u_{obs})$, where $u_{obs}$ is the observed "don't know" rate. Two
-reassurances: if nobody answers "don't know" ($u=0$), this reduces *exactly* to the
+algebraic checks: if nobody answers "don't know" ($u=0$), this reduces *exactly* to the
 original four-box method; and the same self-test identity holds — at the observed
 directional guess rate and observed "don't know" rate, the adjusted curve lands
-exactly on the raw effect.
+exactly on the raw effect. The proposal additionally preserves the observed arm
+split within UNKNOWN responses through $t$; it does not force overall arm mass
+to remain fixed as $c$ or $u$ changes. Preserving $t$ and $u$ is an explicit
+reweighting choice, not evidence about what would happen under perfect blinding.
 
 Here it is on a simulated three-answer trial (the "identity error" near zero confirms
 the self-test passes):

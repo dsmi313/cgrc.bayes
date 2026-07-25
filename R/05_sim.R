@@ -12,8 +12,10 @@
 #                significance 0.056/0.876/0.826/0.992 (published
 #                0.05/0.86/0.78/0.99)
 #   noise="arm": Hedges g = 0.5023; rates 0.056/0.970/0.930/0.998
-# The author's source code was NOT located, so this is convergent empirical
-# evidence rather than verification against the original implementation.
+# The exact scope of the Eq. 4 variance terms could not be verified from the
+# available source. `noise="all"` is the default because it most closely
+# reproduces the published Hedges g and operating characteristics; `all_prop`
+# concerns pseudo-sample allocation and provides no evidence about noise scope.
 
 sim_aeb <- function(n = 230, p_cg = 0.7, dte_on = FALSE, aeb_on = FALSE,
                     noise = c("all", "arm"),
@@ -36,9 +38,10 @@ sim_aeb <- function(n = 230, p_cg = 0.7, dte_on = FALSE, aeb_on = FALSE,
 # Operating characteristics over many INDEPENDENT trials. A single simulated
 # trial is an illustration, not validation.
 #
-# True Delta(0.5) equals the direct treatment effect: at perfect blinding the
-# guess distribution is identical in both arms, so the AEB term contributes
-# equally to each and cancels.
+# Under this AEB simulation model, the known target Delta(0.5) equals the direct
+# treatment parameter because the simulated guess distribution is identical in
+# both arms at c = 0.5 and the AEB term cancels. This model-specific identity is
+# not a causal identification claim for real trials.
 # `direction` orients favourability (+1 higher-is-better, -1 lower-is-better) and
 # is applied identically to the Bayesian flags and the frequentist criterion, so
 # the two are compared on the SAME tail. At the default +1 every column is

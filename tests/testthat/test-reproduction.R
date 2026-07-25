@@ -83,6 +83,28 @@ test_that("KDE resampling converges to the analytic value", {
   d <- sim_aeb(400, dte_on = TRUE, aeb_on = TRUE)
   st <- cgr_strata(d); rt <- cgr_ratios(st)
   analytic <- cgr_delta(0.5, lapply(st, mean), rt$r, rt$s)
-  k <- cgr_kde(d, 0.5, n_rep = 4000)
+  k <- cgr_kde(d, 0.5, n_rep = 4000, source_faithful = FALSE)
   expect_lt(abs(k$est - analytic), 4 * k$est_mcse + 0.05)
+})
+
+test_that("source-faithful KDE uses shipped allocation and integer scores", {
+  ex <- data.frame(
+    condition = c(rep("PL", 65), rep("AC", 35), rep("PL", 25), rep("AC", 75)),
+    guess = c(rep("PL", 65), rep("PL", 35), rep("AC", 25), rep("AC", 75)),
+    value = seq_len(200))
+  st <- cgr_strata(ex)
+  expect_equal(cgr_sizes(st, 0.5, legacy_round = TRUE),
+               c(ACAC = 54, ACPL = 59, PLAC = 41, PLPL = 46))
+  set.seed(2)
+  src <- cgr_kde(ex, 0.5, n_rep = 3, source_faithful = TRUE)
+  expect_equal(src$target_sizes, cgr_sizes(st, 0.5, legacy_round = TRUE))
+  expect_true(src$scores_integer)
+  set.seed(2)
+  exact <- cgr_kde(ex, 0.5, n_rep = 3, source_faithful = FALSE)
+  expect_false(exact$scores_integer)
+
+  panas_counts <- list(ACAC = seq_len(48), ACPL = seq_len(43),
+                       PLAC = seq_len(39), PLPL = seq_len(102))
+  expect_false(isTRUE(all.equal(cgr_ratios(panas_counts),
+                                cgr_ratios(panas_counts, legacy_round = TRUE))))
 })

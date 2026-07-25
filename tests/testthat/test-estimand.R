@@ -12,6 +12,28 @@ test_that("weights sum to 1 and split c / 1-c by guess class", {
   }
 })
 
+test_that("class arm shares are preserved while overall arm mass may change", {
+  # PANAS counts: ACAC=48, ACPL=43, PLAC=39, PLPL=102.
+  st <- list(ACAC = seq_len(48), ACPL = seq_len(43),
+             PLAC = seq_len(39), PLPL = seq_len(102))
+  rat <- cgr_ratios(st)
+  w <- cgr_weights(0.5, rat$r, rat$s)
+  expect_equal(unname(w[["PLPL"]] / (w[["PLPL"]] + w[["ACAC"]])), rat$r)
+  expect_equal(unname(w[["ACPL"]] / (w[["ACPL"]] + w[["PLAC"]])), rat$s)
+  observed_active <- (48 + 43) / 232
+  target_active <- unname(w[["ACAC"]] + w[["ACPL"]])
+  expect_equal(observed_active, 91 / 232)
+  expect_equal(target_active, 0.5 * (1 - rat$r) + 0.5 * rat$s)
+  expect_false(isTRUE(all.equal(target_active, observed_active)))
+
+  mu <- list(ACAC = 8, ACPL = 4, PLAC = 3, PLPL = 2)
+  manual <- (w[["ACAC"]] * mu$ACAC + w[["ACPL"]] * mu$ACPL) /
+    (w[["ACAC"]] + w[["ACPL"]]) -
+    (w[["PLAC"]] * mu$PLAC + w[["PLPL"]] * mu$PLPL) /
+    (w[["PLAC"]] + w[["PLPL"]])
+  expect_equal(cgr_delta(0.5, mu, rat$r, rat$s), unname(manual))
+})
+
 test_that("treatment-arm denominators stay positive on the interior", {
   for (cc in seq(0.001, 0.999, length.out = 50)) {
     w <- cgr_weights(cc, 0.68, 0.524)

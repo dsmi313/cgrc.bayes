@@ -4,7 +4,7 @@ Honest three-way split. "VERIFIED" means it was actually computed. "NOT RUN"
 means no R or no JAGS was available and nobody should assume it passes.
 
 **Update (2026-07-24, this environment):** the suite has grown well beyond the
-July-21 state as the UNKNOWN-preserving extension and the Shiny readability pass
+July-21 state as the proposed UNKNOWN-preserving extension and the Shiny readability pass
 landed. On R 4.3.3 the full testthat suite is green — **1711 pass / 0 fail**,
 with **3 skips** that are JAGS-only (the `cgr_unknown_jags` checks; JAGS was not
 installed in this run). The Student-t robustness sensitivity (N4) DOES run at

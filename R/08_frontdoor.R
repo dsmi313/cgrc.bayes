@@ -49,8 +49,10 @@ plot.cgrc <- function(x, ...) {
 # a "significant/not" verdict. delta defaults to 0.5 * outcome SD: half a standard
 # deviation is the minimum important difference Norman (2003) argues for and the
 # one Szigeti's own 2024 escitalopram trial adopts, so "meaningful" here means
-# clinically meaningful rather than merely non-zero. Narrow delta_sd_frac for a
-# stricter view. direction = +1 if higher scores are better, -1 if lower are better.
+# clinically meaningful rather than merely non-zero. Increase delta_sd_frac for
+# a more demanding meaningfulness threshold; decrease it if smaller effects are
+# considered meaningful. direction = +1 if higher scores are better, -1 if lower
+# are better.
 cgrc_headline <- function(df, direction = 1, delta = NULL, delta_sd_frac = 0.5,
                           n_draws = 20000, prior = list(), seed = NULL) {
   if (!is.null(seed)) set.seed(seed)

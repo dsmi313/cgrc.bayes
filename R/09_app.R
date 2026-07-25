@@ -296,7 +296,7 @@ cgrc_build_report <- function(f) {
   add("- Package: cgrc.bayes %s", ver)
   add("- Random seed: %s", if (is.null(f$seed)) "not set" else as.character(f$seed))
   meth <- if (f$mode == "unknown")
-    paste("UNKNOWN-preserving CGRC extension (six strata; observed UNKNOWN rate",
+    paste("Proposed UNKNOWN-preserving CGRC extension (six strata; observed UNKNOWN rate",
           "held fixed while the directional correct-guess rate is varied). This",
           "is an extension implemented by cgrc.bayes, not the original Szigeti",
           "estimand.")
@@ -331,6 +331,13 @@ cgrc_build_report <- function(f) {
         f$ufit$observed_unknown_rate, f$ufit$target_unknown_rate)
     add("- n total / directional / UNKNOWN: %d / %d / %d",
         f$ufit$n_total, f$ufit$n_directional, f$ufit$n_unknown)
+    dg <- cgr_unknown_estimable(st, f$ufit$target_unknown_rate,
+                                c(0.5, f$ufit$observed_directional_cgr),
+                                warn = FALSE)
+    if (dg$boundary_share) add(paste0(
+      "- **Fragility warning:** observed zero cell(s) ",
+      paste(dg$boundary_cells, collapse = ", "),
+      " imply a plug-in within-class arm share of 0 or 1."))
     sm <- f$ufit$summary; z <- cgr_unknown_reference_line_test(f$trial)
     h <- f$uhead
     obs_est <- sm$post_mean[1]; adj_est <- sm$post_mean[2]
@@ -435,8 +442,8 @@ cgrc_reliability <- function(min_stratum, empty_stratum_rate = NA_real_,
 # Tidy one-row-per-quantity summary of an uploaded-trial analysis, feeding BOTH
 # the compact on-screen headline and the downloadable summary CSV so the two can
 # never disagree. `f` is the app's assembled analysis object (see inst/app/app.R).
-# The adjusted effect is explicitly labelled a counterfactual under the CGRC
-# assumptions, not automatically the true pharmacological effect. Works for the
+# The adjusted contrast is explicitly labelled as the CGRC estimand, not
+# automatically the true pharmacological effect. Works for the
 # binary and the UNKNOWN-preserving modes.
 cgrc_analysis_summary <- function(f) {
   if (f$mode == "unknown") {
@@ -450,8 +457,8 @@ cgrc_analysis_summary <- function(f) {
   }
   data.frame(
     quantity = c(
-      "Raw treatment effect (at observed CGR)",
-      "Adjusted effect (CGR 0.50; counterfactual under CGRC assumptions)",
+      "Raw randomized treatment contrast (at observed CGR)",
+      "CGRC-adjusted contrast (target CGR 0.50)",
       "Adjusted 95% CrI lower", "Adjusted 95% CrI upper",
       "P(favourable) raw", "P(favourable) adjusted",
       sprintf("P(exceeds %.3g-unit threshold) raw", f$delta),
@@ -481,7 +488,7 @@ cgrc_build_html_report <- function(f) {
   summ <- cgrc_analysis_summary(f)
   gr <- tryCatch(cgr_guess_rates(f$trial), error = function(e) NULL)
   method <- if (f$mode == "unknown")
-    "UNKNOWN-preserving CGRC extension (six strata; observed UNKNOWN rate held fixed)."
+    "Proposed UNKNOWN-preserving CGRC extension (six strata; observed UNKNOWN rate held fixed)."
     else "Binary four-stratum CGRC (Normal-Inverse-Gamma conjugate posterior)."
   s <- f$audit$summary
   warns <- character(0)
@@ -492,6 +499,15 @@ cgrc_build_html_report <- function(f) {
       abs(gr$active - gr$placebo) > 0.2)
     warns <- c(warns, sprintf("Arm asymmetry: active-arm correct-guess rate %.0f%% vs placebo-arm %.0f%%.",
                               100 * gr$active, 100 * gr$placebo))
+  if (f$mode == "unknown") {
+    st <- cgr_unknown_strata(f$trial)
+    dg <- cgr_unknown_estimable(st, f$ufit$target_unknown_rate,
+                                c(0.5, f$ufit$observed_directional_cgr),
+                                warn = FALSE)
+    if (dg$boundary_share) warns <- c(warns, paste0(
+      "Observed zero cell(s) ", paste(dg$boundary_cells, collapse = ", "),
+      " imply a plug-in within-class arm share of 0 or 1; the estimate is fragile."))
+  }
   rows <- paste(sprintf("<tr><td>%s</td><td style='text-align:right'>%s</td></tr>",
                         esc(summ$quantity), ifelse(is.na(summ$value), "NA",
                           formatC(summ$value, format = "g", digits = 6))),
@@ -521,8 +537,8 @@ cgrc_build_html_report <- function(f) {
     "<li>Rows uploaded: ", s[["n_input"]], "; analysed: ", nrow(f$trial), "</li>",
     "</ul>",
     "<h2>Results</h2><table>", rows, "</table>",
-    "<p class='muted'>The adjusted effect is a counterfactual under the CGRC ",
-    "assumptions (what the effect would have been at a 50% correct-guess rate), ",
+    "<p class='muted'>The adjusted contrast is the CGRC reweighted estimand at ",
+    "a 50% correct-guess rate, ",
     "not automatically the true pharmacological effect. Probabilities are ",
     "continuous &mdash; no significant/not-significant cut-off is imposed.</p>",
     "<h2>Warnings</h2>", warn_html,
