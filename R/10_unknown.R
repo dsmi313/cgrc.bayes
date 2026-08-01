@@ -247,7 +247,7 @@ cgr_unknown_ratio_draws <- function(st, n_draws, alpha = 1) {
 # (the reweighting is a no-op there) and 0.50 (directional guessing at chance,
 # UNKNOWN rate held fixed). Deliberately mirrors cgr_summary_table() but names
 # the quantities for the UNKNOWN extension.
-cgr_unknown_summary_table <- function(cur, obs_cgr, u, tol = 1e-6) {
+cgr_unknown_summary_table <- function(cur, obs_cgr, u, label = "", tol = 1e-6) {
   at <- function(target) {
     i <- which.min(abs(cur$cgr - target))
     if (abs(cur$cgr[i] - target) > tol)
@@ -259,7 +259,7 @@ cgr_unknown_summary_table <- function(cur, obs_cgr, u, tol = 1e-6) {
   a <- at(obs_cgr); h <- at(0.5)
   unadj_distinct <- !(a$lo <= 0 && a$hi >= 0)
   pct <- if (unadj_distinct) 100 * (a$est - h$est) / a$est else NA_real_
-  data.frame(
+  out <- data.frame(
     directional_cgr = c(round(obs_cgr, 4), 0.5),
     unknown_rate = round(c(u, u), 4),
     what = c("observed (unadjusted)",
@@ -271,6 +271,8 @@ cgr_unknown_summary_table <- function(cur, obs_cgr, u, tol = 1e-6) {
     abs_attenuation = round(c(NA, a$est - h$est), 3),
     pct_attenuation = round(c(NA, pct), 1),
     stringsAsFactors = FALSE)
+  if (nzchar(label)) out <- cbind(outcome = label, out)
+  out
 }
 
 # The reference-line diagnostic for the UNKNOWN extension. At the observed
@@ -353,9 +355,12 @@ cgr_unknown_rope_sensitivity <- function(df, at_cgr = 0.5, u_target = NULL,
 # direction = +1 if higher is better, -1 if lower is better. Returns an S3
 # "cgrc_unknown" object (NOT inheriting "cgrc": the binary plot/print methods
 # would mislabel the directional x-axis).
+# outcome = a label for the outcome being analysed. When non-empty it is added as
+# a leading `outcome` column in the summary table; the default "" omits the column
+# entirely.
 cgrc_unknown <- function(df, unknown_level = "UNKNOWN", unknown_rate = NULL,
                          n_draws = 20000, direction = 1, prior = list(),
-                         seed = NULL) {
+                         seed = NULL, outcome = "") {
   if (!is.null(seed)) set.seed(seed)
   if (!is.null(unknown_rate) && (unknown_rate < 0 || unknown_rate >= 1))
     stop("unknown_rate must be NULL or in [0, 1).", call. = FALSE)
@@ -376,7 +381,7 @@ cgrc_unknown <- function(df, unknown_level = "UNKNOWN", unknown_rate = NULL,
                                 direction = direction, prior = prior)
   structure(list(
     curve = cur,
-    summary = cgr_unknown_summary_table(cur, o$c_obs, u),
+    summary = cgr_unknown_summary_table(cur, o$c_obs, u, label = outcome),
     observed_directional_cgr = o$c_obs,
     observed_unknown_rate = o$u_obs,
     target_unknown_rate = u,

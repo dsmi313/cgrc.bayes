@@ -13,14 +13,18 @@
 # `seed` (optional): when given, set.seed(seed) is called before drawing and the
 # value is recorded in the returned object for reproducible reports. Default NULL
 # preserves the previous behaviour (reproducibility via an external set.seed).
-cgrc <- function(df, n_draws = 20000, direction = 1, prior = list(), seed = NULL) {
+# `outcome` (optional): a label for the outcome being analysed. When non-empty it
+# is added as a leading `outcome` column in the summary table; the default ""
+# omits the column entirely.
+cgrc <- function(df, n_draws = 20000, direction = 1, prior = list(), seed = NULL,
+                 outcome = "") {
   if (!is.null(seed)) set.seed(seed)
   o    <- cgr_observed(cgr_strata(df))
   grid <- sort(unique(c(seq(0, 1, length.out = 101), o)))
   cur  <- cgr_conjugate(df, grid, n_draws = n_draws,
                         direction = direction, prior = prior)
   structure(list(curve = cur,
-                 summary = cgr_summary_table(cur, o),
+                 summary = cgr_summary_table(cur, o, label = outcome),
                  observed_cgr = o, seed = seed),
             class = "cgrc")
 }
