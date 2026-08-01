@@ -178,8 +178,7 @@ cgr_summary_table <- function(cur, obs_cgr, label = "", tol = 1e-6) {
   # (e.g. cognitive performance, unadj -0.011 with CrI crossing 0).
   unadj_distinct <- !(a$lo <= 0 && a$hi >= 0)
   pct <- if (unadj_distinct) 100 * (a$est - h$est) / a$est else NA_real_
-  data.frame(
-    outcome = label,
+  out <- data.frame(
     cgr = c(round(obs_cgr, 4), 0.5),
     what = c("observed (unadjusted)", "reweighted to CGR 0.50 (adjusted)"),
     post_mean = round(c(a$est, h$est), 3),
@@ -190,4 +189,6 @@ cgr_summary_table <- function(cur, obs_cgr, label = "", tol = 1e-6) {
     pct_attenuation = round(c(NA, pct), 1),
     stringsAsFactors = FALSE
   )
+  if (nzchar(label)) out <- cbind(outcome = label, out)
+  out
 }

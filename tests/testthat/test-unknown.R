@@ -238,6 +238,19 @@ test_that("cgrc_unknown grid includes the observed CGR and 0.50 exactly", {
   expect_s3_class(fit, "cgrc_unknown")
 })
 
+test_that("cgrc_unknown() omits the outcome column unless a label is supplied", {
+  d <- mk_unknown(c(ACAC = 26, ACPL = 11, ACU = 12, PLAC = 21, PLPL = 23, PLU = 14))
+  # no label -> no outcome column at all (not a blank one)
+  set.seed(1); bare <- suppressWarnings(cgrc_unknown(d, n_draws = 3000))
+  expect_false("outcome" %in% names(bare$summary))
+  # a label -> a leading outcome column filled on both rows
+  set.seed(1); named <- suppressWarnings(cgrc_unknown(d, n_draws = 3000, outcome = "Mood VAS"))
+  expect_identical(names(named$summary)[1], "outcome")
+  expect_equal(named$summary$outcome, rep("Mood VAS", 2))
+  # the label only adds the outcome column; the rest of the layout is unchanged
+  expect_identical(names(named$summary)[-1], names(bare$summary))
+})
+
 test_that("direction flips which tail counts as favourable", {
   d <- mk_unknown(c(ACAC = 25, ACPL = 12, ACU = 15, PLAC = 14, PLPL = 22, PLU = 13), seed = 5)
   set.seed(3); up   <- cgr_unknown_conjugate(d, 0.5, n_draws = 6000, direction =  1)

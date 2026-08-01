@@ -72,6 +72,20 @@ test_that("cgrc_headline pluralises the delta unit correctly", {
   expect_match(h2$text, "beyond 2.5 points")
 })
 
+test_that("cgrc() omits the outcome column unless a label is supplied", {
+  set.seed(4)
+  d <- sim_aeb(n = 230, p_cg = 0.7, dte_on = TRUE)
+  # no label -> no outcome column at all (not a blank one)
+  bare <- cgrc(d, n_draws = 2000)
+  expect_false("outcome" %in% names(bare$summary))
+  # a label -> a leading outcome column filled on both rows
+  named <- cgrc(d, n_draws = 2000, outcome = "Mood VAS")
+  expect_identical(names(named$summary)[1], "outcome")
+  expect_equal(named$summary$outcome, rep("Mood VAS", 2))
+  # the label only adds the outcome column; the rest of the layout is unchanged
+  expect_identical(names(named$summary)[-1], names(bare$summary))
+})
+
 test_that("cgr_summary_table warns when the grid does not contain the target", {
   cur <- make_cur(data.frame(est = 3.2, lo = 0.7, hi = 5.7), obs_cgr = 0.65)
   # asking for 0.6466 when the grid only has 0.65 must warn (grid-snapping)
