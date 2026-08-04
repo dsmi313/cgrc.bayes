@@ -23,15 +23,11 @@ What the shrinkage does tell you is how much weight a result can bear. The PANAS
 
 Crossing assigned arm with guessed arm gives four strata, written arm first: `ACAC`, `ACPL`, `PLAC`, `PLPL`. Write $\bar y_k$ for a stratum’s mean outcome and $\rho_k$ for its share of participants, so the observed correct-guess rate is $c_{obs}=\rho_{ACAC}+\rho_{PLPL}$. Two ratios record how correct and incorrect guessers split between arms: 
 
-$$r=\frac{\rho_{PLPL}}{\rho_{PLPL}+\rho_{ACAC}},\qquad
-s=\frac{\rho_{ACPL}}{\rho_{ACPL}+\rho_{PLAC}}.$$
+$$r=\frac{\rho_{PLPL}}{\rho_{PLPL}+\rho_{ACAC}},\qquad s=\frac{\rho_{ACPL}}{\rho_{ACPL}+\rho_{PLAC}}.$$
 
  To impose a target guess rate $c$, reweight the four strata to $w_{ACAC}=c(1-r)$, $w_{PLPL}=cr$, $w_{ACPL}=(1-c)s$, $w_{PLAC}=(1-c)(1-s)$, preserving those arm splits within the correct and incorrect classes and renormalizing each arm: 
 
-$$\Delta(c)=\frac{w_{ACAC}\bar y_{ACAC}+w_{ACPL}\bar
-y_{ACPL}}{w_{ACAC}+w_{ACPL}}
-        -\frac{w_{PLPL}\bar y_{PLPL}+w_{PLAC}\bar
-y_{PLAC}}{w_{PLPL}+w_{PLAC}}.$$
+$$\Delta(c)=\frac{w_{ACAC}\bar y_{ACAC}+w_{ACPL}\bar y_{ACPL}}{w_{ACAC}+w_{ACPL}} -\frac{w_{PLPL}\bar y_{PLPL}+w_{PLAC}\bar y_{PLAC}}{w_{PLPL}+w_{PLAC}}.$$
 
  The primary target is $\Delta(0.5)$.
 
@@ -161,10 +157,10 @@ knitr::kable(emp, caption = "CGR-adjusted results, four outcomes (adjusted = tar
 
 | outcome               |   n | observed_CGR |   raw | adjusted (0.50) | 95% CrI         | P(fav) | P(meaningful) | published (Table 2) |
 |:----------------------|----:|-------------:|------:|----------------:|:----------------|:-------|:--------------|--------------------:|
-| PANAS                 | 232 |        0.647 |  3.15 |            1.07 | [-1.59, 3.79] | 78%    | 0%            |                 1.1 |
-| Mood VAS              | 232 |        0.647 |  6.33 |            2.51 | [-3.15, 8.28] | 80%    | 0%            |                 2.7 |
-| Energy VAS            | 232 |        0.647 | 11.36 |            7.09 | [2.18, 12.10] | 100%   | 10%           |                 6.8 |
-| Cognitive performance | 186 |        0.629 | -0.01 |            0.01 | [-0.16, 0.17] | 53%    | 0%            |                 0.0 |
+| PANAS                 | 232 |        0.647 |  3.15 |            1.07 | \[-1.59, 3.79\] | 78%    | 0%            |                 1.1 |
+| Mood VAS              | 232 |        0.647 |  6.33 |            2.51 | \[-3.15, 8.28\] | 80%    | 0%            |                 2.7 |
+| Energy VAS            | 232 |        0.647 | 11.36 |            7.09 | \[2.18, 12.10\] | 100%   | 10%           |                 6.8 |
+| Cognitive performance | 186 |        0.629 | -0.01 |            0.01 | \[-0.16, 0.17\] | 53%    | 0%            |                 0.0 |
 
 CGR-adjusted results, four outcomes (adjusted = target CGR 0.50; meaningful = beyond half an outcome SD, per Norman et al. 2003)
 
@@ -176,7 +172,7 @@ plot(fit_panas, title = "PANAS, week 1")
 
 The final column is the published CGR-adjusted estimate for the same outcome. The posterior means agree with it to within about 0.3 points across all four scales, which is the closest thing here to a direct reproduction check on empirical data rather than on simulation.
 
-For PANAS the raw effect of about 3.2 falls to 1.1 at the target rate, its adjusted interval ([-1.6, 3.8]) straddles zero, and $P(\text{favorable})$ falls to about 78%. Mood VAS behaves the same way. Energy VAS is the survivor, its adjusted interval sitting entirely above zero. Cognitive performance is near zero throughout, so the adjustment changes little, a reassuring null. The adjustment is therefore not a blunt instrument that shrinks everything: it separates results fragile to the blinding assumption from those that are not.
+For PANAS the raw effect of about 3.2 falls to 1.1 at the target rate, its adjusted interval (\[-1.6, 3.8\]) straddles zero, and $P(\text{favorable})$ falls to about 78%. Mood VAS behaves the same way. Energy VAS is the survivor, its adjusted interval sitting entirely above zero. Cognitive performance is near zero throughout, so the adjustment changes little, a reassuring null. The adjustment is therefore not a blunt instrument that shrinks everything: it separates results fragile to the blinding assumption from those that are not.
 
 # 5 Operating characteristics
 
@@ -276,17 +272,11 @@ Real blinding questionnaires often offer a third response. The four-cell method 
 
 Crossing assignment with three responses gives $ACAC$, $ACPL$, $ACU$, $PLAC$, $PLPL$, $PLU$. Let $u_{obs}=\rho_{ACU}+\rho_{PLU}$ be the observed UNKNOWN rate, and let the directional correct-guess rate be computed among directional guessers only, $c_{obs}=(\rho_{ACAC}+\rho_{PLPL})/(1-u_{obs})$. An UNKNOWN response is not an incorrect guess. Three ratios preserve the arm split within the correct, incorrect and UNKNOWN classes: 
 
-$$r=\frac{\rho_{PLPL}}{\rho_{PLPL}+\rho_{ACAC}},\qquad
-s=\frac{\rho_{ACPL}}{\rho_{ACPL}+\rho_{PLAC}},\qquad
-t=\frac{\rho_{ACU}}{\rho_{ACU}+\rho_{PLU}}.$$
+$$r=\frac{\rho_{PLPL}}{\rho_{PLPL}+\rho_{ACAC}},\qquad s=\frac{\rho_{ACPL}}{\rho_{ACPL}+\rho_{PLAC}},\qquad t=\frac{\rho_{ACU}}{\rho_{ACU}+\rho_{PLU}}.$$
 
  Targets $c$ and $u$ then give 
 
-$$\begin{aligned}
-w_{ACAC}&=(1-u)c(1-r), & w_{PLPL}&=(1-u)cr,\
-w_{ACPL}&=(1-u)(1-c)s, & w_{PLAC}&=(1-u)(1-c)(1-s),\
-w_{ACU}&=ut,           & w_{PLU}&=u(1-t),
-\end{aligned}$$
+$$\begin{aligned} w_{ACAC}&amp;=(1-u)c(1-r), &amp; w_{PLPL}&amp;=(1-u)cr,\\ w_{ACPL}&amp;=(1-u)(1-c)s, &amp; w_{PLAC}&amp;=(1-u)(1-c)(1-s),\\ w_{ACU}&amp;=ut, &amp; w_{PLU}&amp;=u(1-t), \end{aligned}$$
 
  and $\Delta(c,u)$ is the same active-minus-placebo comparison of weighted means over the three cells per arm. For the primary adjustment I hold $u=u_{obs}$ and set $c=0.5$: keep the observed proportion who said “I don’t know,” and reweight those who did guess so their directional accuracy is chance.
 
@@ -388,7 +378,7 @@ knitr::kable(
     uf$observed_directional_cgr,
     100 * uf$observed_unknown_rate,
     abs(zu$D_at_obs - zu$raw_mean_diff)
-  )
+)
 )
 ```
 
@@ -414,7 +404,7 @@ u_scen <- c(
   "effect / expectancy"
 )
 
-u_expectancy_only <- uop[uop$DTE == 0 & uop$AEB == 1, , drop = FALSE]
+u_expectancy_only <- uop[uop$DTE == 0 & uop$AEB == 1,, drop = FALSE]
 u_n_eff <- uop$n_valid
 
 knitr::kable(
@@ -429,7 +419,7 @@ knitr::kable(
     `flagged, unadjusted (P(fav.) > 0.95)` = round(uop$unadj_p_fav_gt_95, 3),
     `empty-stratum rate` = round(uop$empty_stratum_rate, 3),
     check.names = FALSE
-  ),
+),
   caption = "UNKNOWN-preserving operating characteristics, n = 230, directional CGR = 0.70, UNKNOWN rate = 0.25, 500 trials/scenario"
 )
 ```
@@ -511,9 +501,9 @@ knitr::kable(do.call(rbind, Map(row_of, names(A), A)), row.names = FALSE,
 
 | trial   | mode    |   n | obs CGR |   raw | adjusted (0.50) | adj 95% CrI     | P(fav) raw \>\>\> adj | P(meaningful) raw \>\>\> adj |
 |:--------|:--------|----:|--------:|------:|----------------:|:----------------|:----------------------|:-----------------------------|
-| Cavanna | binary  |  34 |   0.559 | 21.55 |           19.93 | [0.38, 39.22] | 99% \>\>\> 98%        | 81% \>\>\> 75%               |
-| Santana | unknown |  77 |   0.569 |  1.58 |            1.43 | [0.49, 2.41]  | 100% \>\>\> 100%      | 57% \>\>\> 45%               |
-| Lii     | unknown |  38 |   0.519 | -3.02 |           -2.80 | [-8.36, 2.63] | 87% \>\>\> 86%        | 28% \>\>\> 25%               |
+| Cavanna | binary  |  34 |   0.559 | 21.55 |           19.93 | \[0.38, 39.22\] | 99% \>\>\> 98%        | 81% \>\>\> 75%               |
+| Santana | unknown |  77 |   0.569 |  1.58 |            1.43 | \[0.49, 2.41\]  | 100% \>\>\> 100%      | 57% \>\>\> 45%               |
+| Lii     | unknown |  38 |   0.519 | -3.02 |           -2.80 | \[-8.36, 2.63\] | 87% \>\>\> 86%        | 28% \>\>\> 25%               |
 
 Three independent trials through the app’s analysis pipeline (Cavanna outcome = dosing-day VAS, a selected high-signal outcome)
 
@@ -567,7 +557,7 @@ Read as a fragility check rather than a decomposition, the CGRC does something n
 # 9 Sources
 
 - Szigeti, B., Nutt, D., Carhart-Harris, R., & Erritzoe, D. (2023). The difference between ‘placebo group’ and ‘placebo control’: A case study in psychedelic microdosing. *Scientific Reports*, *13*, 12107. <https://doi.org/10.1038/s41598-023-34938-7>
-- Loewinger, G., Stensrud, M. J., Nayak, S. M., Yaden, D., & Levis, A. W. (2026). Causal inference in studies with functional unmasking: Psychedelics and beyond [Preprint]. medRxiv. <https://doi.org/10.64898/2025.12.05.25341713>
+- Loewinger, G., Stensrud, M. J., Nayak, S. M., Yaden, D., & Levis, A. W. (2026). Causal inference in studies with functional unmasking: Psychedelics and beyond \[Preprint\]. medRxiv. <https://doi.org/10.64898/2025.12.05.25341713>
 - Szigeti, B., Kartner, L., Blemings, A., Rosas, F., Feilding, A., Nutt, D. J., Carhart-Harris, R. L., & Erritzoe, D. (2021). Self-blinding citizen science to explore psychedelic microdosing. *eLife*, *10*, e62878. <https://doi.org/10.7554/eLife.62878>
 - Cavanna, F., Muller, S., de la Fuente, L. A., Zamberlan, F., Palmucci, M., Janeckova, L., Kuchar, M., Pallavicini, C., & Tagliazucchi, E. (2022). Microdosing with psilocybin mushrooms: A double-blind placebo-controlled study. *Translational Psychiatry*, *12*, 307. <https://doi.org/10.1038/s41398-022-02039-0> Data: <https://doi.org/10.5281/zenodo.5745892>
 - Santana-Penín, U., Santana-Mora, U., López-Solache, A., Mora, M. J., Collier, T., Pocock, S. J., Lorenzo-Franco, F., Varela-Centelles, P., & López-Cedrún, J. L. (2023). Remodeling dental anatomy vs sham therapy for chronic temporomandibular disorders. A placebo-controlled randomized clinical trial. *Annals of Anatomy*, *250*, 152117. <https://doi.org/10.1016/j.aanat.2023.152117> Data: <https://doi.org/10.5061/dryad.zkh189370>
