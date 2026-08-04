@@ -44,7 +44,7 @@ Szigeti’s method:
 
 Steps 3–5 are the part this document replaces. Steps 1–2 define the estimand and are retained exactly.
 
-**A note on the resample count.** The paper’s text (Fig 2 caption) says the KDE sampling is “repeated 100 times”. The author’s source repository ([`szb37/CorrectGuessRateCurve`](https://github.com/szb37/CorrectGuessRateCurve), `src/config.py`) tells a different story: its **Figure 4 configuration** (`cgrC_low`) specifies `n_cgrc_trials = 32` over `np.linspace(0, 1, 13)` — 32 resamples across 13 CGR grid points (the options are 32/64/96, never 100). Two caveats keep this from being airtight: the repo states it reproduces the *preprint* (a different title, then under peer review), so the config may be preprint-era rather than what generated the final published figure; and the Figure-4 block in `run.py` is disabled behind `if False:`. Still, none of the available options is 100, and if the real count is 32 then — because Monte Carlo error scales as \$1/\sqrt{n_{\text{rep}}}\$ — the error is about \$\sqrt{100/32} \approx 1.8\times\$ larger than a 100-resample assumption. Section 8 includes 32 in the ladder so the reader can see it either way.
+**A note on the resample count.** The paper’s text (Fig 2 caption) says the KDE sampling is “repeated 100 times”. The author’s source repository ([`szb37/CorrectGuessRateCurve`](https://github.com/szb37/CorrectGuessRateCurve), `src/config.py`) tells a different story: its **Figure 4 configuration** (`cgrC_low`) specifies `n_cgrc_trials = 32` over `np.linspace(0, 1, 13)` — 32 resamples across 13 CGR grid points (the options are 32/64/96, never 100). Two caveats keep this from being airtight: the repo states it reproduces the *preprint* (a different title, then under peer review), so the config may be preprint-era rather than what generated the final published figure; and the Figure-4 block in `run.py` is disabled behind `if False:`. Still, none of the available options is 100, and if the real count is 32 then — because Monte Carlo error scales as $1/\sqrt{n_{\text{rep}}}$ — the error is about $\sqrt{100/32} \approx 1.8\times$ larger than a 100-resample assumption. Section 8 includes 32 in the ladder so the reader can see it either way.
 
 Two properties of step 5 matter later. Averaging p-values across resamples has no accepted inferential interpretation — it is not a p-value for any hypothesis test. And resampling introduces Monte Carlo error into the reported estimate that is a property of the computation, not of the trial.
 
@@ -65,44 +65,44 @@ Every participant is in exactly one of four boxes: what they **got** crossed wit
 
 The **observed CGR** is the share who guessed right:
 
-\$\$c\_{obs} = \frac{n\_{ACAC} + n\_{PLPL}}{n}\$\$
+$$c_{obs} = \frac{n_{ACAC} + n_{PLPL}}{n}$$
 
-Practically: if \$c_{obs} = 0.65\$, 65% of participants knew what they were taking, so their expectancies were not balanced across arms.
+Practically: if $c_{obs} = 0.65$, 65% of participants knew what they were taking, so their expectancies were not balanced across arms.
 
 To ask “what if only 50% had guessed right”, we reweight — put more weight on the wrong-guess boxes and less on the right-guess boxes. But we must not accidentally change the **arm balance** while doing it. Two ratios pin that down:
 
-\$\$r = \frac{n\_{PLPL}}{n\_{PLPL} + n\_{ACAC}}, \qquad s = \frac{n\_{ACPL}}{n\_{ACPL} + n\_{PLAC}}\$\$
+$$r = \frac{n_{PLPL}}{n_{PLPL} + n_{ACAC}}, \qquad s = \frac{n_{ACPL}}{n_{ACPL} + n_{PLAC}}$$
 
-Practically: \$r\$ is “of the people who guessed right, what fraction were on placebo”; \$s\$ is “of the people who guessed wrong, what fraction were on active”. Holding these fixed means the reweighting only changes *how much guessing happened*, never *who got what*.
+Practically: $r$ is “of the people who guessed right, what fraction were on placebo”; $s$ is “of the people who guessed wrong, what fraction were on active”. Holding these fixed means the reweighting only changes *how much guessing happened*, never *who got what*.
 
 ## 3.2 The four weights
 
-| Weight        | Formula        | Meaning                |
-|---------------|----------------|------------------------|
-| \$w_{ACAC}\$ | \$c(1-r)\$     | active, correct guess  |
-| \$w_{PLPL}\$ | \$cr\$         | placebo, correct guess |
-| \$w_{ACPL}\$ | \$(1-c)s\$     | active, wrong guess    |
-| \$w_{PLAC}\$ | \$(1-c)(1-s)\$ | placebo, wrong guess   |
+| Weight       | Formula      | Meaning                |
+|--------------|--------------|------------------------|
+| $w_{ACAC}$  | $c(1-r)$  | active, correct guess  |
+| $w_{PLPL}$  | $cr$ | placebo, correct guess |
+| $w_{ACPL}$ | $(1-c)s$ | active, wrong guess    |
+| $w_{PLAC}$ | $(1-c)(1-s)$ | placebo, wrong guess   |
 
-**Algebraically**, the correct-guess weights sum to \$c\$:
+**Algebraically**, the correct-guess weights sum to $c$:
 
-\$\$w\_{ACAC} + w\_{PLPL} = c(1-r) + cr = c(1-r+r) = c\$\$
+$$w_{ACAC} + w_{PLPL} = c(1-r) + cr = c(1-r+r) = c$$
 
-and the incorrect-guess weights sum to \$1-c\$:
+and the incorrect-guess weights sum to $1-c$:
 
-\$\$w\_{ACPL} + w\_{PLAC} = (1-c)s + (1-c)(1-s) = (1-c)(s + 1 - s) = 1-c\$\$
+$$w_{ACPL} + w_{PLAC} = (1-c)s + (1-c)(1-s) = (1-c)(s + 1 - s) = 1-c$$
 
 so all four sum to 1. Section 4 checks this numerically.
 
 ## 3.3 The contrast
 
-\$\$\Delta(c) = \underbrace{\frac{w\_{ACAC}\mu\_{ACAC} + w\_{ACPL}\mu\_{ACPL}}{w\_{ACAC} + w\_{ACPL}}}\_{\text{active arm}} - \underbrace{\frac{w\_{PLPL}\mu\_{PLPL} + w\_{PLAC}\mu\_{PLAC}}{w\_{PLPL} + w\_{PLAC}}}\_{\text{placebo arm}}\$\$
+$$\Delta(c) = \underbrace{\frac{w_{ACAC}\mu_{ACAC} + w_{ACPL}\mu_{ACPL}}{w_{ACAC} + w_{ACPL}}}_{\text{active arm}} - \underbrace{\frac{w_{PLPL}\mu_{PLPL} + w_{PLAC}\mu_{PLAC}}{w_{PLPL} + w_{PLAC}}}_{\text{placebo arm}}$$
 
-Each arm’s mean is a weighted average of its two strata; the denominators renormalise within arm. \$\Delta(0.5)\$ is the perfectly blinded estimate.
+Each arm’s mean is a weighted average of its two strata; the denominators renormalise within arm. $\Delta(0.5)$ is the perfectly blinded estimate.
 
-**The key identity.** At \$c = c_{obs}\$ the weights are proportional to the observed stratum shares, so each arm collapses to its ordinary sample mean:
+**The key identity.** At $c = c_{obs}$ the weights are proportional to the observed stratum shares, so each arm collapses to its ordinary sample mean:
 
-\$\$\Delta(c\_{obs}) = \bar{y}\_{AC} - \bar{y}\_{PL}\$\$
+$$\Delta(c_{obs}) = \bar{y}_{AC} - \bar{y}_{PL}$$
 
 This is the single most useful check available. It means the green reference line must intersect the curve exactly at the unadjusted difference — and it is how a misplaced reference line gets caught.
 
@@ -156,7 +156,9 @@ data.frame(stratum = STRATA,
 
 Expected: ACAC n=48 mean=19.5625; ACPL n=43 mean=12.3256; PLAC n=39 mean=18.3590; PLPL n=102 mean=10.9314.
 
-\$\$c\_{obs} = \frac{48 + 102}{232} = \frac{150}{232} = 0.646552\$\$ \$\$r = \frac{102}{102+48} = 0.680000 \qquad s = \frac{43}{43+39} = 0.524390\$\$
+$$c_{obs} = \frac{48 + 102}{232} = \frac{150}{232} = 0.646552$$
+
+$$r = \frac{102}{102+48} = 0.680000 \qquad s = \frac{43}{43+39} = 0.524390$$
 
 ```r
 do.call(rbind, lapply(c(obs, 0.5), function(cc) {
@@ -174,9 +176,9 @@ do.call(rbind, lapply(c(obs, 0.5), function(cc) {
 | 0.646552 | 0.206897 | 0.185345 | 0.168103 | 0.439655 |    0.646552 |      0.353448 |
 | 0.500000 | 0.160000 | 0.262195 | 0.237805 | 0.340000 |    0.500000 |      0.500000 |
 
-At \$c = c_{obs}\$: active arm \$= 6.331897/0.392241 = 16.142857\$, placebo arm \$= 7.892241/0.607759 = 12.985816\$, so \$\Delta = 3.157042\$.
+At $c = c_{obs}$: active arm $= 6.331897/0.392241 = 16.142857$, placebo arm $= 7.892241/0.607759 = 12.985816$, so $\Delta = 3.157042$.
 
-At \$c = 0.50\$: active arm \$= 6.361707/0.422195 = 15.068169\$, placebo arm \$= 8.082520/0.577805 = 13.988321\$, so \$\Delta = 1.079847\$.
+At $c = 0.50$: active arm $= 6.361707/0.422195 = 15.068169$, placebo arm $= 8.082520/0.577805 = 13.988321$, so $\Delta = 1.079847$.
 
 ```r
 mu <- lapply(st, mean)
@@ -206,20 +208,24 @@ The identity holds exactly.
 
 # 5 Bayesian probability model
 
-Each stratum \$j \in \ACAC, ACPL, PLAC, PLPL\\$ gets its own mean and variance, with a Normal-Inverse-Gamma prior:
+Each stratum $j \in \lbrace ACAC, ACPL, PLAC, PLPL\rbrace$ gets its own mean and variance, with a Normal-Inverse-Gamma prior:
 
-\$\$y\_{ij} \mid \mu_j, \sigma_j^2 \sim \mathcal{N}(\mu_j, \sigma_j^2)\$\$ \$\$\mu_j \mid \sigma_j^2 \sim \mathcal{N}\\\left(m_0, \frac{\sigma_j^2}{k_0}\right)\$\$ \$\$\sigma_j^2 \sim \text{Inverse-Gamma}(a_0, b_0)\$\$
+$$y_{ij} \mid \mu_j, \sigma_j^2 \sim \mathcal{N}(\mu_j, \sigma_j^2)$$
 
-The middle line is the one that matters and the one most easily got wrong: the prior on \$\mu_j\$ **depends on** \$\sigma_j^2\$. That is what makes the model conjugate. A model with \$\mu_j \sim \mathcal{N}(m_0, \text{const})\$ independently of \$\sigma_j^2\$ is a *different model* — see Section 8.
+$$\mu_j \mid \sigma_j^2 \sim \mathcal{N}\left(m_0, \frac{\sigma_j^2}{k_0}\right)$$
 
-| Parameter | Mathematical role       | Practical meaning                                          | Behaviour as \$n\$ grows |
-|-----------|-------------------------|------------------------------------------------------------|--------------------------|
-| \$m_0\$   | prior mean of \$\mu_j\$ | where you’d guess the stratum mean sits before seeing data | influence \$\to 0\$      |
-| \$k_0\$   | prior precision scale   | **prior sample size in pseudo-observations**               | swamped by \$n\$         |
-| \$a_0\$   | IG shape                | prior confidence about the variance                        | swamped by \$n/2\$       |
-| \$b_0\$   | IG scale                | prior scale of the variance                                | swamped by \$SS/2\$      |
+$$\sigma_j^2 \sim \text{Inverse-Gamma}(a_0, b_0)$$
 
-Defaults are \$m_0 = 0\$, \$k_0 = 10^{-6}\$, \$a_0 = b_0 = 10^{-3}\$: deliberately vague, so the posterior mean lands on the sample mean and the reproduction check in Section 10 is like-for-like. \$k_0 = 10^{-6}\$ literally means the prior is worth one-millionth of an observation.
+The middle line is the one that matters and the one most easily got wrong: the prior on $\mu_j$ **depends on** $\sigma_j^2$. That is what makes the model conjugate. A model with $\mu_j \sim \mathcal{N}(m_0, \text{const})$ independently of $\sigma_j^2$ is a *different model* — see Section 8.
+
+| Parameter    | Mathematical role          | Practical meaning                                          | Behaviour as $n$ grows |
+|--------------|----------------------------|------------------------------------------------------------|---------------------------------|
+| $m_0$ | prior mean of $\mu_j$ | where you’d guess the stratum mean sits before seeing data | influence $\to 0$          |
+| $k_0$ | prior precision scale      | **prior sample size in pseudo-observations**               | swamped by $n$         |
+| $a_0$ | IG shape                   | prior confidence about the variance                        | swamped by $n/2$         |
+| $b_0$ | IG scale                   | prior scale of the variance                                | swamped by $SS/2$         |
+
+Defaults are $m_0 = 0$, $k_0 = 10^{-6}$, $a_0 = b_0 = 10^{-3}$: deliberately vague, so the posterior mean lands on the sample mean and the reproduction check in Section 10 is like-for-like. $k_0 = 10^{-6}$ literally means the prior is worth one-millionth of an observation.
 
 ------------------------------------------------------------------------
 
@@ -227,14 +233,20 @@ Defaults are \$m_0 = 0\$, \$k_0 = 10^{-6}\$, \$a_0 = b_0 = 10^{-3}\$: deliberate
 
 Conjugacy gives closed-form updates:
 
-\$\$k_n = k_0 + n\$\$ \$\$m_n = \frac{k_0 m_0 + n\bar{y}}{k_n}\$\$ \$\$a_n = a_0 + \frac{n}{2}\$\$ \$\$b_n = b_0 + \frac{1}{2}\sum_i (y_i - \bar{y})^2 + \frac{k_0 n (\bar{y} - m_0)^2}{2k_n}\$\$
+$$k_n = k_0 + n$$
+
+$$m_n = \frac{k_0 m_0 + n\bar{y}}{k_n}$$
+
+$$a_n = a_0 + \frac{n}{2}$$
+
+$$b_n = b_0 + \frac{1}{2}\sum_i (y_i - \bar{y})^2 + \frac{k_0 n (\bar{y} - m_0)^2}{2k_n}$$
 
 Reading them:
 
-- \$k_n\$: total information, prior pseudo-observations plus real ones.
-- \$m_n\$: a **precision-weighted average** of prior mean and sample mean. With \$k_0\$ tiny, it is the sample mean.
-- \$a_n\$: each observation contributes half a unit of shape.
-- \$b_n\$: prior scale, plus observed scatter, plus a penalty for prior/data disagreement. That third term vanishes when \$k_0 \to 0\$.
+- $k_n$: total information, prior pseudo-observations plus real ones.
+- $m_n$: a **precision-weighted average** of prior mean and sample mean. With $k_0$ tiny, it is the sample mean.
+- $a_n$: each observation contributes half a unit of shape.
+- $b_n$: prior scale, plus observed scatter, plus a penalty for prior/data disagreement. That third term vanishes when $k_0 \to 0$.
 
 ```r
 d <- nig_draws(st$ACAC, n_draws = 10, return_sigma2 = TRUE)
@@ -257,23 +269,23 @@ data.frame(quantity = c("n", "ybar", "sum of squares", "k_n", "m_n",
 | a_n                     |   24.0010000 |
 | b_n                     | 1668.9074413 |
 | m_n - ybar              |   -0.0000004 |
-| E[sigma2]=b_n/(a_n-1) |   72.5580384 |
+| E\[sigma2\]=b_n/(a_n-1) |   72.5580384 |
 | sample variance         |   71.0172872 |
 
-\$m_n\$ differs from \$\bar{y}\$ by about \$4 \times 10^{-7}\$. That is what “vague prior” means operationally.
+$m_n$ differs from $\bar{y}$ by about $4 \times 10^{-7}$. That is what “vague prior” means operationally.
 
-## 6.1 Why draw \$\sigma^2\$ first
+## 6.1 Why draw $\sigma^2$ first
 
 The joint posterior factorises as
 
-\$\$p(\mu, \sigma^2 \mid y) = p(\sigma^2 \mid y)\\ p(\mu \mid \sigma^2, y)\$\$
+$$p(\mu, \sigma^2 \mid y) = p(\sigma^2 \mid y)\, p(\mu \mid \sigma^2, y)$$
 
-The marginal \$p(\sigma^2 \mid y)\$ is Inverse-Gamma\$(a_n, b_n)\$ in closed form, and the conditional \$p(\mu \mid \sigma^2, y)\$ is \$\mathcal{N}(m_n, \sigma^2/k_n)\$. Drawing in that order — \$\sigma^2\$, then \$\mu\$ given it — produces exact draws from the joint.
+The marginal $p(\sigma^2 \mid y)$ is Inverse-Gamma $(a_n, b_n)$ in closed form, and the conditional $p(\mu \mid \sigma^2, y)$ is $\mathcal{N}(m_n, \sigma^2/k_n)$. Drawing in that order — $\sigma^2$, then $\mu$ given it — produces exact draws from the joint.
 
 **Two facts that are easy to conflate:**
 
 - Iterations are **independent of each other**. Draw 500 tells you nothing about draw 501.
-- Within a **single** iteration, \$\mu\$ and \$\sigma^2\$ are **dependent**: a draw with large \$\sigma^2\$ is paired with a more dispersed \$\mu\$.
+- Within a **single** iteration, $\mu$ and $\sigma^2$ are **dependent**: a draw with large $\sigma^2$ is paired with a more dispersed $\mu$.
 
 That pairing is the mechanism by which variance uncertainty propagates into uncertainty about the mean. Inspect it directly:
 
@@ -286,11 +298,11 @@ plot(sqrt(pd$sigma2), pd$mu, pch = 16, cex = 0.3,
 abline(h = mean(st$ACAC), col = "red", lty = 2)
 ```
 
-![](report-files/full/fig01.png)
+![](https://raw.githubusercontent.com/dsmi313/cgrc.bayes/main/report-files/full/fig01.png)
 
 ## 6.2 `n_draws` is not a sample size
 
-Renamed from `S` to remove the ambiguity. `n_draws = 20000` reduces Monte Carlo error **in the posterior summaries** to roughly \$\text{sd}/\sqrt{20000}\$. It adds no information about participants. The data contain 232 people whatever `n_draws` is set to.
+Renamed from `S` to remove the ambiguity. `n_draws = 20000` reduces Monte Carlo error **in the posterior summaries** to roughly $\text{sd}/\sqrt{20000}$. It adds no information about participants. The data contain 232 people whatever `n_draws` is set to.
 
 ------------------------------------------------------------------------
 
@@ -300,7 +312,7 @@ The implementation is the installed **`cgrc.bayes`** package (loaded in the setu
 
 | File              | Contents                                                                            |
 |-------------------|-------------------------------------------------------------------------------------|
-| `R/01_estimand.R` | strata, ratios, weights, \$\Delta(c)\$, analytic curve, `cgr_reference_line_test()` |
+| `R/01_estimand.R` | strata, ratios, weights, $\Delta(c)$, analytic curve, `cgr_reference_line_test()` |
 | `R/02_bayes.R`    | `nig_draws()`, conjugate posterior curve                                            |
 | `R/03_jags.R`     | corrected JAGS model, backend check                                                 |
 | `R/04_kde.R`      | KDE procedure port; `cgr_kde_curve()` for the published figures                     |
@@ -331,7 +343,7 @@ Before any table, the published **figures** need reproducing in their own visual
 
 ## 8.1 Figure 3 reproduced: the AEB simulation
 
-Four scenarios crossing direct treatment effect (DTE) and activated expectancy bias (AEB). “Original CGR” is the simulated guess probability \$p_{CG} = 0.7\$; “True blind CGR” is 0.50. The signature to check against the paper is panel 3 (`DTE off, AEB on`): a rising red estimate crossing zero near 0.50, so the blue p-value peaks near 0.50 and drops toward significance at both ends.
+Four scenarios crossing direct treatment effect (DTE) and activated expectancy bias (AEB). “Original CGR” is the simulated guess probability $p_{CG} = 0.7$; “True blind CGR” is 0.50. The signature to check against the paper is panel 3 (`DTE off, AEB on`): a rising red estimate crossing zero near 0.50, so the blue p-value peaks near 0.50 and drops toward significance at both ends.
 
 ```r
 CFG <- list(c(0, 0), c(1, 0), c(0, 1), c(1, 1))
@@ -345,7 +357,7 @@ for (i in seq_along(CFG)) {
 }
 ```
 
-![](report-files/full/fig02.png)
+![](https://raw.githubusercontent.com/dsmi313/cgrc.bayes/main/report-files/full/fig02.png)
 
 ```r
 par(mfrow = c(1, 1))
@@ -364,7 +376,7 @@ for (i in seq_along(sb)) {
 }
 ```
 
-![](report-files/full/fig03.png)
+![](https://raw.githubusercontent.com/dsmi313/cgrc.bayes/main/report-files/full/fig03.png)
 
 ```r
 par(mfrow = c(1, 1))
@@ -415,7 +427,7 @@ do.call(rbind, lapply(names(sb), function(nm) {
 
 ## 8.5 Faithful reproduction: Szigeti rounds the ratios
 
-The identity above uses the **exact** within-class ratios \$r\$ and \$s\$. The author’s code does not: `get_strata_ratio` in [`szb37/CorrectGuessRateCurve`](https://github.com/szb37/CorrectGuessRateCurve) (`src/cgrc/core.py`) computes each stratum proportion as `round(x, 2)` before forming \$r\$ and \$s\$. So the **faithful reproduction path is `legacy_round = TRUE`**, and the exact-ratio default used elsewhere in this document — while mathematically the cleaner estimand, and the one for which the identity holds to machine precision — is *not* the number Szigeti actually computed. The impact is small but real:
+The identity above uses the **exact** within-class ratios $r$ and $s$. The author’s code does not: `get_strata_ratio` in [`szb37/CorrectGuessRateCurve`](https://github.com/szb37/CorrectGuessRateCurve) (`src/cgrc/core.py`) computes each stratum proportion as `round(x, 2)` before forming $r$ and $s$. So the **faithful reproduction path is `legacy_round = TRUE`**, and the exact-ratio default used elsewhere in this document — while mathematically the cleaner estimand, and the one for which the identity holds to machine precision — is *not* the number Szigeti actually computed. The impact is small but real:
 
 ```r
 do.call(rbind, lapply(names(sb), function(nm) {
@@ -443,7 +455,7 @@ Rounding shifts the unadjusted PANAS estimate by about +0.01 and Energy VAS by a
 
 ## 8.6 The reference-line test
 
-The identity above makes the position of the reference line *checkable* rather than decorative: since \$\Delta(c_{obs})\$ equals the paper’s own reported unadjusted estimate, a line drawn at some claimed CGR is only in the right place if \$\Delta\$ there equals that value. The paper’s Figure 4 draws its “original CGR” line at **0.72** (Fig 4 caption; see `reports/SOURCES.md`), so this tests 0.72 against the computed observed CGR.
+The identity above makes the position of the reference line *checkable* rather than decorative: since $\Delta(c_{obs})$ equals the paper’s own reported unadjusted estimate, a line drawn at some claimed CGR is only in the right place if $\Delta$ there equals that value. The paper’s Figure 4 draws its “original CGR” line at **0.72** (Fig 4 caption; see `reports/SOURCES.md`), so this tests 0.72 against the computed observed CGR.
 
 ```r
 pub_unadj <- c(PANAS = 3.2, `Mood VAS` = 6.4, `Energy VAS` = 11.5,
@@ -530,14 +542,14 @@ kde_tab[, c("outcome","target","n_rep","kde_est","kde_mcse","mean_p",
 Three conclusions:
 
 1.  **KDE versus a Gaussian stratum model contributes essentially nothing.** At 10 000 resamples the KDE average converges on the analytic value in every cell. The estimand uses only stratum means, and KDE smoothing preserves means.
-2.  **Few resamples is materially noisy.** At 32 resamples — the count the repo’s Figure-4 config specifies (see the caveats in Section 2) — the Monte Carlo SE is roughly 0.2–0.5 points on the PANAS/VAS scales, about \$1.8\times\$ the 100-resample value and larger than the 0.12 discrepancy this document flags in the paper’s reference-line placement. PANAS at CGR 0.50 wanders by tens of a percent purely from resampling noise.
+2.  **Few resamples is materially noisy.** At 32 resamples — the count the repo’s Figure-4 config specifies (see the caveats in Section 2) — the Monte Carlo SE is roughly 0.2–0.5 points on the PANAS/VAS scales, about $1.8\times$ the 100-resample value and larger than the 0.12 discrepancy this document flags in the paper’s reference-line placement. PANAS at CGR 0.50 wanders by tens of a percent purely from resampling noise.
 3.  **The averaged p-values reproduce the published ones** (PANAS ~0.41 vs 0.43; Energy ~0.043 vs 0.04), confirming the port is faithful rather than merely plausible.
 
 So the difference between the original and this document is **computational stability plus a change of inferential summary** — not a change of estimand.
 
 ## 8.8 KDE averaged p-value vs the Bayesian posterior — head-to-head
 
-The comparison above matched the KDE *point estimate* to the analytic value, and the two implementations agree there because both target \$\Delta(c)\$ and averaging mean-preserving resamples does not move a mean. What differs is the *inferential summary*: the original averages a two-sided \$t\$-test p-value across resamples, this one summarises a posterior. Those are not the same statement. This subsection puts them head to head — first on the real PANAS data, then as an operating-characteristic comparison over repeated simulated trials (the check noted as an open item in earlier drafts).
+The comparison above matched the KDE *point estimate* to the analytic value, and the two implementations agree there because both target $\Delta(c)$ and averaging mean-preserving resamples does not move a mean. What differs is the *inferential summary*: the original averages a two-sided $t$ -test p-value across resamples, this one summarises a posterior. Those are not the same statement. This subsection puts them head to head — first on the real PANAS data, then as an operating-characteristic comparison over repeated simulated trials (the check noted as an open item in earlier drafts).
 
 ```r
 set.seed(7)
@@ -564,7 +576,7 @@ do.call(rbind, lapply(c(`observed CGR` = o, `perfect blinding` = 0.5), function(
 
 The two point estimates coincide at every CGR. The two evidence summaries need not: at the observed CGR the KDE averaged p-value is 0.049, while the posterior puts P(favourable) at 0.996 — a two-sided tail of about 0.008. Same estimand, same direction, but the averaged p-value is the more conservative summary.
 
-To see whether that is systematic, the next chunk runs both procedures over the *same* simulated trials — 300 trials at \$n = 200\$, correct-guess rate 0.7 and a true 3-point effect — and compares their point estimates and their decisions at matched thresholds (two-sided \$p < 0.05\$ against posterior \$P > 0.975\$). It also re-runs the KDE step with the bandwidth set to zero, to test whether the kernel is responsible for any gap.
+To see whether that is systematic, the next chunk runs both procedures over the *same* simulated trials — 300 trials at $n = 200$, correct-guess rate 0.7 and a true 3-point effect — and compares their point estimates and their decisions at matched thresholds (two-sided $p &lt; 0.05$ against posterior $P &gt; 0.975$). It also re-runs the KDE step with the bandwidth set to zero, to test whether the kernel is responsible for any gap.
 
 ```r
 set.seed(101)
@@ -579,7 +591,7 @@ for (i in seq_len(N)) {
   dd <- cgr_delta(0.5, lapply(st, nig_draws, n_draws = 4000), rat$r, rat$s)
   be[i] <- mean(dd); bp[i] <- mean(dd > 0)
 }
-ok <- !is.na(kp)
+ok <-!is.na(kp)
 
 knitr::kable(data.frame(
   Quantity = c("Valid trials",
@@ -628,13 +640,13 @@ ggplot(data.frame(kde = kp[ok], post2 = 2 * pmin(bp[ok], 1 - bp[ok])),
   theme_minimal(base_size = 13)
 ```
 
-![](report-files/full/fig04.png)
+![](https://raw.githubusercontent.com/dsmi313/cgrc.bayes/main/report-files/full/fig04.png)
 
-The two procedures **agree on the estimand** — the per-trial point estimates are almost perfectly correlated (\$r \approx\$ 0.996) and share the same small bias — but they **do not agree on the evidence**. At matched thresholds the posterior flags the effect in about 74% of trials against roughly 54% for the averaged p-value, and the two rules reach different conclusions on about 20% of trials; in the scatter the averaged p-value sits systematically above the identity line — a weaker evidence signal for the same trials. This is **not** a kernel artefact: setting the KDE bandwidth to zero leaves the flag rate essentially unchanged (0.540 vs 0.540). It is the *resample-and-average-a-p-value* step itself — which has no coherent inferential interpretation — that costs the original procedure detection power. Replacing it with a posterior probability is therefore not merely a change of vocabulary: it recovers evidence the averaging discards, while leaving the estimand untouched. That is the single clearest statement of what the Bayesian version adds.
+The two procedures **agree on the estimand** — the per-trial point estimates are almost perfectly correlated ($r \approx$ 0.996) and share the same small bias — but they **do not agree on the evidence**. At matched thresholds the posterior flags the effect in about 74% of trials against roughly 54% for the averaged p-value, and the two rules reach different conclusions on about 20% of trials; in the scatter the averaged p-value sits systematically above the identity line — a weaker evidence signal for the same trials. This is **not** a kernel artefact: setting the KDE bandwidth to zero leaves the flag rate essentially unchanged (0.540 vs 0.540). It is the *resample-and-average-a-p-value* step itself — which has no coherent inferential interpretation — that costs the original procedure detection power. Replacing it with a posterior probability is therefore not merely a change of vocabulary: it recovers evidence the averaging discards, while leaving the estimand untouched. That is the single clearest statement of what the Bayesian version adds.
 
 ## 8.9 Conjugate versus matched JAGS
 
-The JAGS prior has been **corrected**. It previously used independent priors `mu[j] ~ dnorm(0, 1e-6)` and `tau[j] ~ dgamma(1e-3, 1e-3)`, which is *not* the Normal-Inverse-Gamma model, because NIG requires \$\text{Var}(\mu \mid \sigma^2) = \sigma^2/k_0\$, i.e. precision \$k_0 \tau\$. The corrected model is
+The JAGS prior has been **corrected**. It previously used independent priors `mu[j] ~ dnorm(0, 1e-6)` and `tau[j] ~ dgamma(1e-3, 1e-3)`, which is *not* the Normal-Inverse-Gamma model, because NIG requires $\text{Var}(\mu \mid \sigma^2) = \sigma^2/k_0$, i.e. precision $k_0 \tau$. The corrected model is
 
     tau[j] ~ dgamma(a0, b0)
     mu[j]  ~ dnorm(m0, k0 * tau[j])
@@ -664,7 +676,7 @@ data.frame(quantity = names(chk), value = unlist(lapply(chk, as.character)))
 
 A single simulated trial is an illustration, not validation. This section runs **500 independent trials per scenario**.
 
-True \$\Delta(0.5)\$ equals the direct treatment effect, because at perfect blinding the guess distribution is identical in both arms, so the AEB term contributes equally to each and cancels.
+True $\Delta(0.5)$ equals the direct treatment effect, because at perfect blinding the guess distribution is identical in both arms, so the AEB term contributes equally to each and cancels.
 
 ```r
 op <- cgr_operating(n_trials = 500, n = 230, p_cg = 0.7,
@@ -695,7 +707,7 @@ Reference values obtained while preparing this document:
 
 These are operating characteristics of the *adjusted estimand* under the AEB data-generating model. They are **not** evidence that the Bayesian implementation outperforms the KDE implementation — Section 8 shows both target the same quantity. A like-for-like comparison of the two procedures’ operating characteristics has not been run; see Section 14.
 
-The output also carries an **`empty_stratum_rate`** column. At a high correct guess rate with small \$n\$, a wrong-guess stratum (e.g. placebo-guessed-active) can come up empty in a simulated trial, and the estimand is undefined there; `cgr_operating()` skips those trials and reports how often they occur. At \$n = 230, p_{CG} = 0.7\$ it is 0, but for a small, badly-unblinded trial it can be substantial — which is itself the answer to “is CGR adjustment safe for my design?”. Run it at your own \$n\$ and \$p_{CG}\$ before trusting the adjustment.
+The output also carries an **`empty_stratum_rate`** column. At a high correct guess rate with small $n$, a wrong-guess stratum (e.g. placebo-guessed-active) can come up empty in a simulated trial, and the estimand is undefined there; `cgr_operating()` skips those trials and reports how often they occur. At $n = 230, p_{CG} = 0.7$ it is 0, but for a small, badly-unblinded trial it can be substantial — which is itself the answer to “is CGR adjustment safe for my design?”. Run it at your own $n$ and $p_{CG}$ before trusting the adjustment.
 
 ## 9.1 The generative-model ambiguity, resolved
 
@@ -776,7 +788,7 @@ do.call(rbind, lapply(names(sb), function(nm) {
 
 For PANAS the placebo-arm correct-guess rate is **0.7234**, essentially the hardcoded 0.72, while the microdose arm is 0.5275 — barely above chance. That the constant equals the placebo-arm rate is a strong coincidence, and the likely reason the value 0.72 was chosen — but *that* part is a hypothesis; the fact that 0.72 is hardcoded and not the data’s overall CGR is settled by the code.
 
-It matters substantively. The arms are unbalanced (141 placebo vs 91 microdose in week 1) and guesses skew heavily toward “placebo”. A single scalar CGR hides that asymmetry, which the estimand encodes through \$s\$.
+It matters substantively. The arms are unbalanced (141 placebo vs 91 microdose in week 1) and guesses skew heavily toward “placebo”. A single scalar CGR hides that asymmetry, which the estimand encodes through $s$.
 
 ### 10.1.2 The n = 232 versus n = 233 discrepancy
 
@@ -809,7 +821,7 @@ do.call(rbind, lapply(names(sb), function(nm)
 | Cognitive performance | 0.6290 | observed (unadjusted)             |    -0.011 | -0.168 |  0.151 |        0.447 |              NA |              NA |
 | Cognitive performance | 0.5000 | reweighted to CGR 0.50 (adjusted) |     0.005 | -0.160 |  0.173 |        0.527 |          -0.016 |              NA |
 
-The `pct_attenuation` column (e.g. ~66% for PANAS) is a **ratio between two estimates and depends on the likelihood**: under the Student-\$t\$ fit of Section 11 the same PANAS attenuation reads ~57%, not 66%. Treat it as a rough descriptor, not a fixed quantity; `pct_attenuation` is also suppressed (shown as `NA`) whenever the unadjusted estimate is not distinguishable from zero, because a ratio to a near-zero denominator is meaningless.
+The `pct_attenuation` column (e.g. ~66% for PANAS) is a **ratio between two estimates and depends on the likelihood**: under the Student- $t$ fit of Section 11 the same PANAS attenuation reads ~57%, not 66%. Treat it as a rough descriptor, not a fixed quantity; `pct_attenuation` is also suppressed (shown as `NA`) whenever the unadjusted estimate is not distinguishable from zero, because a ratio to a near-zero denominator is meaningless.
 
 ```r
 cur <- do.call(rbind, lapply(names(sb), function(nm) {
@@ -819,9 +831,9 @@ cgr_plot(cur[cur$outcome == "PANAS", ],
          title = "PANAS, week 1 acute")
 ```
 
-![](report-files/full/fig05.png)
+![](https://raw.githubusercontent.com/dsmi313/cgrc.bayes/main/report-files/full/fig05.png)
 
-Note what the lower panel is and is not. It is \$P(\Delta(c) > 0 \mid y)\$ — the posterior probability that the reweighted contrast is positive. It is **not a p-value**, there is no line at 0.05, and the line at 0.95 is a descriptive marker, not a universal cutoff.
+Note what the lower panel is and is not. It is $P(\Delta(c) &gt; 0 \mid y)$ — the posterior probability that the reweighted contrast is positive. It is **not a p-value**, there is no line at 0.05, and the line at 0.95 is a descriptive marker, not a universal cutoff.
 
 For outcomes where lower scores are better (QIDS, STAIT), pass `direction = -1` so favourability is declared rather than assumed.
 
@@ -829,12 +841,12 @@ For outcomes where lower scores are better (QIDS, STAIT), pass `direction = -1` 
 
 The plot above carries the full posterior, but a trialist reading a result wants two numbers, and a p-value only ever addresses the first:
 
-- **Is there an effect?** \$P(\text{favourable}) = P(\text{direction}\cdot\Delta > 0)\$ — the posterior twin of a one-sided \$p\$-value.
-- **Is it big enough to care?** \$P(\text{meaningful}) = P(\text{direction}\cdot\Delta > \delta)\$ — a question a \$p\$-value structurally cannot answer, because it never speaks to magnitude.
+- **Is there an effect?** $P(\text{favourable}) = P(\text{direction}\cdot\Delta &gt; 0)$ — the posterior twin of a one-sided $p$ -value.
+- **Is it big enough to care?** $P(\text{meaningful}) = P(\text{direction}\cdot\Delta &gt; \delta)$ — a question a $p$ -value structurally cannot answer, because it never speaks to magnitude.
 
-`cgrc_headline()` reports both, each **before** the blinding correction (at the observed CGR) and **after** it (at CGR \$=0.5\$), with the adjusted point estimate and 95% credible interval. There is no bright-line threshold; these are continuous probabilities, deliberately not re-collapsed into a “significant / not” verdict.
+`cgrc_headline()` reports both, each **before** the blinding correction (at the observed CGR) and **after** it (at CGR $=0.5$), with the adjusted point estimate and 95% credible interval. There is no bright-line threshold; these are continuous probabilities, deliberately not re-collapsed into a “significant / not” verdict.
 
-The default \$\delta\$ is **half an outcome standard deviation** — the minimum important difference Norman (2003) defends and the one Szigeti’s own 2024 escitalopram trial adopts — so “meaningful” reads as *clinically* meaningful, not merely non-zero. That is a deliberately demanding bar; `delta_sd_frac` narrows it if a smaller difference matters for a given outcome.
+The default $\delta$ is **half an outcome standard deviation** — the minimum important difference Norman (2003) defends and the one Szigeti’s own 2024 escitalopram trial adopts — so “meaningful” reads as *clinically* meaningful, not merely non-zero. That is a deliberately demanding bar; `delta_sd_frac` narrows it if a smaller difference matters for a given outcome.
 
 ```r
 set.seed(2)
@@ -908,8 +920,8 @@ data.frame(
   ratios = c("fixed (original estimand)", "Beta-uncertain (extension)"),
   mean = round(c(mean(fixed), mean(random)), 3),
   sd   = round(c(sd(fixed), sd(random)), 3),
-  lo   = round(c(quantile(fixed, .025), quantile(random, .025)), 3),
-  hi   = round(c(quantile(fixed, .975), quantile(random, .975)), 3),
+  lo   = round(c(quantile(fixed,.025), quantile(random,.025)), 3),
+  hi   = round(c(quantile(fixed,.975), quantile(random,.975)), 3),
   p_fav = round(c(mean(fixed > 0), mean(random > 0)), 3))
 ```
 
@@ -977,9 +989,9 @@ do.call(rbind, lapply(names(sb), function(nm) {
 | Cognitive performance | PLAC    |  36 | -0.240 |           0.003 |  0.51 |
 | Cognitive performance | PLPL    |  80 |  0.702 |           1.561 |  0.54 |
 
-Unequal stratum variances are handled by construction — each stratum has its own \$\sigma_j^2\$, so no homoscedasticity assumption is imposed across strata. But the skew table is not innocuous: PANAS stratum ACAC has skew \$-0.94\$ and excess kurtosis \$1.42\$, which is exactly the regime where a Gaussian likelihood’s *intervals* (not its means) can be optimistic. So the robust check is worth running rather than deferring.
+Unequal stratum variances are handled by construction — each stratum has its own $\sigma_j^2$, so no homoscedasticity assumption is imposed across strata. But the skew table is not innocuous: PANAS stratum ACAC has skew $-0.94$ and excess kurtosis $1.42$, which is exactly the regime where a Gaussian likelihood’s *intervals* (not its means) can be optimistic. So the robust check is worth running rather than deferring.
 
-A Student-\$t\$ likelihood with estimated degrees of freedom \$\nu\$ down-weights outliers and has no conjugate form, so it is reachable only through JAGS.
+A Student- $t$ likelihood with estimated degrees of freedom $\nu$ down-weights outliers and has no conjugate form, so it is reachable only through JAGS.
 
 ```r
 set.seed(6)
@@ -997,26 +1009,26 @@ data.frame(
 
 | likelihood | adj_at_0.5 | cri_95          | P_positive | est_df_nu |
 |:-----------|-----------:|:----------------|-----------:|----------:|
-| normal     |      1.077 | [-1.57, 3.72] |       0.79 |        NA |
-| Student-t  |      1.355 | [-1.30, 4.03] |       0.84 |      18.4 |
+| normal     |      1.077 | \[-1.57, 3.72\] |       0.79 |        NA |
+| Student-t  |      1.355 | \[-1.30, 4.03\] |       0.84 |      18.4 |
 
-A **small** \$\nu\$ (say under 10) would mean the data are genuinely heavier-tailed than Gaussian and the robust fit is doing real work; a **large** \$\nu\$ means the \$t\$ collapsed back toward the normal. Here \$\nu \approx 18\$, so the tails are only mildly heavy.
+A **small** $\nu$ (say under 10) would mean the data are genuinely heavier-tailed than Gaussian and the robust fit is doing real work; a **large** $\nu$ means the $t$ collapsed back toward the normal. Here $\nu \approx 18$, so the tails are only mildly heavy.
 
-**But read the point estimate before concluding “no change”.** The adjusted estimate moves from 1.077 (normal) to ~1.355 (Student-\$t\$) — a **~26% shift** in the headline number. That is not negligible for the *attenuation* summary reported elsewhere: under the normal likelihood PANAS attenuates \$3.15 \to 1.08 \approx 66\\$, but under the Student-\$t\$ it is \$3.15 \to 1.355 \approx 57\\$. So the percentage attenuation is **likelihood-dependent** and should not be quoted as a single fixed number.
+**But read the point estimate before concluding “no change”.** The adjusted estimate moves from 1.077 (normal) to ~1.355 (Student- $t$) — a **~26% shift** in the headline number. That is not negligible for the *attenuation* summary reported elsewhere: under the normal likelihood PANAS attenuates $3.15 \to 1.08 \approx 66\%$, but under the Student- $t$ it is $3.15 \to 1.355 \approx 57\%$. So the percentage attenuation is **likelihood-dependent** and should not be quoted as a single fixed number.
 
-What *does* survive the switch is the **inference**: the two posteriors differ by only ~0.2 of a posterior SD, their 95% credible intervals overlap heavily, and \$P(\text{effect} > 0)\$ moves only from 0.79 to 0.84. So the qualitative conclusion — a positive effect that is much attenuated but not clearly zero — holds under both likelihoods; it is the exact attenuation *percentage* that is not robust, not the direction.
+What *does* survive the switch is the **inference**: the two posteriors differ by only ~0.2 of a posterior SD, their 95% credible intervals overlap heavily, and $P(\text{effect} &gt; 0)$ moves only from 0.79 to 0.84. So the qualitative conclusion — a positive effect that is much attenuated but not clearly zero — holds under both likelihoods; it is the exact attenuation *percentage* that is not robust, not the direction.
 
 ------------------------------------------------------------------------
 
 # 12 A region of practical equivalence
 
-The lower panel of Section 10 reports \$P(\Delta(c) > 0 \mid y)\$. As an inferential summary a direction probability — like the two-sided tail it replaced — has two defects. It is **magnitude-blind**: a tiny, precisely estimated effect and a large, uncertain one can score identically. And it **conflates two states of knowledge**: a probability near 0.5 can mean “the posterior is concentrated near zero, so the effect is negligible” or “the posterior is diffuse, so we have learned nothing” — opposite conclusions the statistic cannot separate. For a method whose whole purpose is asking whether an apparent effect *survives* adjustment, that is the distinction that matters.
+The lower panel of Section 10 reports $P(\Delta(c) &gt; 0 \mid y)$. As an inferential summary a direction probability — like the two-sided tail it replaced — has two defects. It is **magnitude-blind**: a tiny, precisely estimated effect and a large, uncertain one can score identically. And it **conflates two states of knowledge**: a probability near 0.5 can mean “the posterior is concentrated near zero, so the effect is negligible” or “the posterior is diffuse, so we have learned nothing” — opposite conclusions the statistic cannot separate. For a method whose whole purpose is asking whether an apparent effect *survives* adjustment, that is the distinction that matters.
 
-The fix is not a Bayes factor against \$\Delta = 0\$: with the vague default prior (\$k_0 = 10^{-6}\$) it depends on the prior width without limit — the Jeffreys–Lindley paradox — so it would measure the prior, not the data. Instead declare a band \$[-\delta, +\delta]\$ of practically-negligible effects and report the three exhaustive probabilities
+The fix is not a Bayes factor against $\Delta = 0$: with the vague default prior ($k_0 = 10^{-6}$) it depends on the prior width without limit — the Jeffreys–Lindley paradox — so it would measure the prior, not the data. Instead declare a band $[-\delta, +\delta]$ of practically-negligible effects and report the three exhaustive probabilities
 
-\$\$P(\Delta \< -\delta), \qquad P(\|\Delta\| \le \delta), \qquad P(\Delta \> +\delta),\$\$
+$$P(\Delta &lt; -\delta), \qquad P(|\Delta| \le \delta), \qquad P(\Delta &gt; +\delta),$$
 
-which sum to 1 and whose middle term separates “negligible” from “uninformative”. The cost — \$\delta\$ must be declared — is a feature: it forces the practical-significance question into the open. The default is \$\delta = 0.1 \times\$ the outcome’s pooled SD.
+which sum to 1 and whose middle term separates “negligible” from “uninformative”. The cost — $\delta$ must be declared — is a feature: it forces the practical-significance question into the open. The default is $\delta = 0.1 \times$ the outcome’s pooled SD.
 
 ```r
 set.seed(31)
@@ -1078,9 +1090,9 @@ ggplot(stack, aes(cgr, p, fill = region)) +
   theme(legend.position = "bottom", panel.grid.minor = element_blank())
 ```
 
-![](report-files/full/fig06.png)
+![](https://raw.githubusercontent.com/dsmi313/cgrc.bayes/main/report-files/full/fig06.png)
 
-**Sensitivity to the width.** A region-based conclusion is only as robust as the region, so vary \$\delta\$ from 0.05 to 0.30 SD at CGR 0.50:
+**Sensitivity to the width.** A region-based conclusion is only as robust as the region, so vary $\delta$ from 0.05 to 0.30 SD at CGR 0.50:
 
 ```r
 set.seed(41)
@@ -1112,7 +1124,7 @@ do.call(rbind, lapply(names(sb), function(nm) {
 | Cognitive performance |        0.20 |  0.11 |        0.796 |     0.113 |
 | Cognitive performance |        0.30 |  0.16 |        0.938 |     0.036 |
 
-Energy VAS is the only outcome whose conclusion is stable across every width — the probability of a meaningful benefit stays high even at \$\delta = 0.3\$ SD. PANAS and Mood VAS flip from “probably meaningful” to “probably negligible” as \$\delta\$ widens, exactly the fragility a single tail number would have concealed.
+Energy VAS is the only outcome whose conclusion is stable across every width — the probability of a meaningful benefit stays high even at $\delta = 0.3$ SD. PANAS and Mood VAS flip from “probably meaningful” to “probably negligible” as $\delta$ widens, exactly the fragility a single tail number would have concealed.
 
 ------------------------------------------------------------------------
 
@@ -1120,19 +1132,19 @@ Energy VAS is the only outcome whose conclusion is stable across every width —
 
 > **This section documents an extension implemented by `cgrc.bayes`. It is not part of the original CGRC formulation of Szigeti et al., and nothing above changes.** The binary four-stratum estimand, its posterior, and all published results are unaffected; the extension lives entirely in new functions.
 
-Real trials often let a participant answer **“I do not know”** to the guess question. Dropping those participants, or coding them as incorrect guesses or as placebo, invents information the trial never collected. The extension keeps UNKNOWN as an observed third response category using **six strata** (\$\text{ACAC}, \text{ACPL}, \text{ACU}, \text{PLAC}, \text{PLPL}, \text{PLU}\$, arm \$\times\$ guess with \$= \$ UNKNOWN).
+Real trials often let a participant answer **“I do not know”** to the guess question. Dropping those participants, or coding them as incorrect guesses or as placebo, invents information the trial never collected. The extension keeps UNKNOWN as an observed third response category using **six strata** ($\text{ACAC}, \text{ACPL}, \text{ACU}, \text{PLAC}, \text{PLPL}, \text{PLU}$, arm $\times$ guess with \$ = \$ UNKNOWN).
 
 ## 13.1 The six-stratum estimand
 
-Write \$u\$ for the UNKNOWN-response rate and \$c\$ for the **directional** correct-guess rate — the correct-guess rate *among participants who gave an AC/PL guess*. With the observed within-class arm shares \$r = \text{PLPL}/(\text{PLPL}+\text{ACAC})\$, \$s = \text{ACPL}/(\text{ACPL}+\text{PLAC})\$ and \$t = \text{ACU}/(\text{ACU}+\text{PLU})\$, the six weights at target \$(c, u)\$ are
+Write $u$ for the UNKNOWN-response rate and $c$ for the **directional** correct-guess rate — the correct-guess rate *among participants who gave an AC/PL guess*. With the observed within-class arm shares $r = \text{PLPL}/(\text{PLPL}+\text{ACAC})$, $s = \text{ACPL}/(\text{ACPL}+\text{PLAC})$ and $t = \text{ACU}/(\text{ACU}+\text{PLU})$, the six weights at target $(c, u)$ are
 
-\$\$\begin{aligned} w\_{\text{ACAC}} &= (1-u)\\c\\(1-r), & w\_{\text{PLPL}} &= (1-u)\\c\\r, \\ w\_{\text{ACPL}} &= (1-u)(1-c)\\s, & w\_{\text{PLAC}} &= (1-u)(1-c)(1-s), \\ w\_{\text{ACU}} &= u\\t, & w\_{\text{PLU}} &= u\\(1-t), \end{aligned}\$\$
+$$\begin{aligned} w_{\text{ACAC}} &amp;= (1-u)\,c\,(1-r), &amp; w_{\text{PLPL}} &amp;= (1-u)\,c\,r, \\ w_{\text{ACPL}} &amp;= (1-u)(1-c)\,s, &amp; w_{\text{PLAC}} &amp;= (1-u)(1-c)(1-s), \\ w_{\text{ACU}} &amp;= u\,t, &amp; w_{\text{PLU}} &amp;= u\,(1-t), \end{aligned}$$
 
-which sum to one; the correct class carries mass \$(1-u)c\$, the incorrect class \$(1-u)(1-c)\$, and the UNKNOWN class \$u\$. The contrast is \$\Delta(c,u) = \mu_{\text{AC}}(c,u) - \mu_{\text{PL}}(c,u)\$, each arm mean being the weight-averaged stratum mean within that arm. The default analysis holds \$u = u_{\text{obs}}\$ and varies \$c\$; the primary adjusted estimate is \$\Delta(0.50,\ u_{\text{obs}})\$ — *directional guessing at chance while holding the observed UNKNOWN-response rate fixed*, which is **not** the same as “perfect blinding”.
+which sum to one; the correct class carries mass $(1-u)c$, the incorrect class $(1-u)(1-c)$, and the UNKNOWN class $u$. The contrast is $\Delta(c,u) = \mu_{\text{AC}}(c,u) - \mu_{\text{PL}}(c,u)$, each arm mean being the weight-averaged stratum mean within that arm. The default analysis holds $u = u_{\text{obs}}$ and varies $c$; the primary adjusted estimate is $\Delta(0.50,\, u_{\text{obs}})$ — *directional guessing at chance while holding the observed UNKNOWN-response rate fixed*, which is **not** the same as “perfect blinding”.
 
 ## 13.2 Two exact properties
 
-**Observed-value identity.** At \$(c_{\text{obs}}, u_{\text{obs}})\$ each within-arm weight reduces to \$n_{\text{stratum}}/n_{\text{total}}\$, so \$\Delta(c_{\text{obs}}, u_{\text{obs}})\$ equals the raw active\$-\$placebo mean difference. **Reduction.** At \$u = 0\$ every weight collapses to the four-stratum \$w\$, so \$\Delta(c, 0)\$ equals the binary `cgr_delta(c, ...)` exactly. Both are checked here on a simulated six-stratum trial:
+**Observed-value identity.** At $(c_{\text{obs}}, u_{\text{obs}})$ each within-arm weight reduces to $n_{\text{stratum}}/n_{\text{total}}$, so $\Delta(c_{\text{obs}}, u_{\text{obs}})$ equals the raw active $-$ placebo mean difference. **Reduction.** At $u = 0$ every weight collapses to the four-stratum $w$, so $\Delta(c, 0)$ equals the binary `cgr_delta(c,...)` exactly. Both are checked here on a simulated six-stratum trial:
 
 ```r
 # a simulated six-stratum trial with an UNKNOWN response category
@@ -1163,16 +1175,16 @@ reduction_gap <- max(abs(vapply(GRID, function(cc)
   cgr_unknown_delta(cc, 0, muu, ratu$r, ratu$s, ratu$t) - cgr_delta(cc, mub, ratb$r, ratb$s),
   numeric(1))))
 
-cat(sprintf("observed-value identity gap : %.2e\n", abs(identity_gap)))
+cat(sprintf("observed-value identity gap: %.2e\n", abs(identity_gap)))
 ```
 
-    ## observed-value identity gap : 3.55e-15
+    ## observed-value identity gap: 3.55e-15
 
 ```r
-cat(sprintf("max reduction gap at u = 0  : %.2e\n", reduction_gap))
+cat(sprintf("max reduction gap at u = 0: %.2e\n", reduction_gap))
 ```
 
-    ## max reduction gap at u = 0  : 3.55e-15
+    ## max reduction gap at u = 0: 3.55e-15
 
 ## 13.3 Reproducing two audited count structures
 
@@ -1195,7 +1207,7 @@ rbind(
 | Santana-Penin (n=77) |      77 |        26 | 0.3377 |            51 | 0.5686 |
 | ketamine (n=38)      |      38 |        11 | 0.2895 |            27 | 0.5185 |
 
-Santana-Penin gives \$u = 26/77 = 0.338\$ and directional \$c = 29/51 = 0.569\$; the ketamine belief subsample gives \$u = 11/38 = 0.289\$ and \$c = 14/27 = 0.519\$.
+Santana-Penin gives $u = 26/77 = 0.338$ and directional $c = 29/51 = 0.569$; the ketamine belief subsample gives $u = 11/38 = 0.289$ and $c = 14/27 = 0.519$.
 
 ## 13.4 Adjusted analysis and backend agreement
 
@@ -1226,11 +1238,11 @@ The x-axis of the extension’s curve is the **directional** correct-guess rate,
 plot(fit_u)
 ```
 
-![](report-files/full/fig07.png)
+![](https://raw.githubusercontent.com/dsmi313/cgrc.bayes/main/report-files/full/fig07.png)
 
 ## 13.5 Operating characteristics under an explicit UNKNOWN model
 
-Does the six-stratum estimator actually recover the direct effect? To ask that we need a generative model that *emits* UNKNOWN responses. `sim_aeb_unknown()` extends the AEB model under two explicit assumptions: **(A1)** the UNKNOWN-response rate is equal in both arms, and **(A2)** an UNKNOWN responder carries no expectancy (no directional belief, so the perceived-treatment \$\rightarrow\$ expectancy path is absent). `cgr_unknown_operating()` is then the six-stratum analogue of `cgr_operating()`.
+Does the six-stratum estimator actually recover the direct effect? To ask that we need a generative model that *emits* UNKNOWN responses. `sim_aeb_unknown()` extends the AEB model under two explicit assumptions: **(A1)** the UNKNOWN-response rate is equal in both arms, and **(A2)** an UNKNOWN responder carries no expectancy (no directional belief, so the perceived-treatment $\rightarrow$ expectancy path is absent). `cgr_unknown_operating()` is then the six-stratum analogue of `cgr_operating()`.
 
 ```r
 oc <- cgr_unknown_operating(n_trials = 300, n = 300, p_cg = 0.7, u = 0.25, seed = 1)
@@ -1244,11 +1256,11 @@ oc[, c("DTE","AEB","true","adj_bias","coverage95","p_fav_gt_95","freq_sig","empt
 |   0 |   1 |    0 |  0.0370478 |  0.9600000 |   0.0566667 | 0.7266667 |                  0 |
 |   1 |   1 |    3 | -0.0170283 |  0.9566667 |   0.7900000 | 1.0000000 |                  0 |
 
-Under A1/A2 the estimator of \$\Delta(0.50, u_{\text{obs}})\$ is essentially unbiased for the direct effect (\|bias\| well under 0.1) with 95% coverage near 0.95 in all four scenarios; and in the **pure-expectancy** row (a real effect of zero, expectancy on) the adjusted analysis flags a favourable effect only ~5% of the time while the naive \$t\$-test is driven to ~70% by expectancy — the six- stratum adjustment removes the inflation just as the binary one does.
+Under A1/A2 the estimator of $\Delta(0.50, u_{\text{obs}})$ is essentially unbiased for the direct effect (\|bias\| well under 0.1) with 95% coverage near 0.95 in all four scenarios; and in the **pure-expectancy** row (a real effect of zero, expectancy on) the adjusted analysis flags a favourable effect only ~5% of the time while the naive $t$ -test is driven to ~70% by expectancy — the six- stratum adjustment removes the inflation just as the binary one does.
 
 ## 13.6 What this extension does and does not claim
 
-It **preserves** the observed UNKNOWN responses and the observed within-class arm ratios \$r, s, t\$ while varying class mass — the same logic as the binary CGRC. It does **not** prove that treatment assignment and all three guess categories are independent; \$t\$ is an assumption exactly as \$r, s\$ are, and `c = 0.50` is directional guessing at chance, not proven perfect blinding. The operating characteristics above are validation **under A1 and A2** — not a claim that the extension beats the binary method in general, nor that A1/A2 hold in any real trial; differential UNKNOWN rates and expectancy-carrying UNKNOWN responders are not yet characterised, and the six strata are thinner than four so degenerate designs appear sooner (see `reports/UNRESOLVED.md`, U10). Optional, default-off sensitivities — `ratio_uncertainty` (propagate \$r,s,t\$), `pooling = "partial"` (hierarchical), and `cgr_unknown_independent()` (a separate shared-guess- distribution estimand) — are provided to probe those assumptions, not to settle them.
+It **preserves** the observed UNKNOWN responses and the observed within-class arm ratios $r, s, t$ while varying class mass — the same logic as the binary CGRC. It does **not** prove that treatment assignment and all three guess categories are independent; $t$ is an assumption exactly as $r, s$ are, and `c = 0.50` is directional guessing at chance, not proven perfect blinding. The operating characteristics above are validation **under A1 and A2** — not a claim that the extension beats the binary method in general, nor that A1/A2 hold in any real trial; differential UNKNOWN rates and expectancy-carrying UNKNOWN responders are not yet characterised, and the six strata are thinner than four so degenerate designs appear sooner (see `reports/UNRESOLVED.md`, U10). Optional, default-off sensitivities — `ratio_uncertainty` (propagate $r,s,t$), `pooling = "partial"` (hierarchical), and `cgr_unknown_independent()` (a separate shared-guess- distribution estimand) — are provided to probe those assumptions, not to settle them.
 
 ------------------------------------------------------------------------
 
@@ -1259,12 +1271,12 @@ It **preserves** the observed UNKNOWN responses and the observed within-class ar
 1.  **Malicious versus benign unblinding.** The method assumes unblinding is *malicious*: side effects reveal allocation, and expectancy then drives outcome (PT → TE → OUT). If unblinding is *benign* — people guess correctly *because* they improved — the causal arrow runs OUT → PT, and CGR adjustment removes a genuine treatment effect. **The original paper warns about this explicitly and it must be preserved prominently.** The authors argue for malicious unblinding here on the grounds that 55% cited bodily sensations versus 23% citing mental benefits, and that the placebo-microdose difference is small relative to natural day-to-day variability. That is an argument from evidence, not a demonstration.
 2.  **Collider bias.** Guess is a downstream consequence of both treatment and outcome. Conditioning on it can induce association where none exists.
 3.  **Transportability.** The four observed strata are assumed to represent the corresponding strata in a hypothetical perfectly blinded population. People who guess correctly under poor blinding may not be exchangeable with those who would guess correctly by chance under good blinding.
-4.  **Conditioning on observed guess behaviour.** The estimand holds \$r\$ and \$s\$ fixed at their observed values, treating stratum composition as known rather than estimated (Section 11 quantifies the alternative).
+4.  **Conditioning on observed guess behaviour.** The estimand holds $r$ and $s$ fixed at their observed values, treating stratum composition as known rather than estimated (Section 11 quantifies the alternative).
 5.  **Normality within stratum.** Bounded scales with floor/ceiling effects are not exactly normal (Section 11 reports skew and kurtosis).
 6.  **Small strata.** ACPL and PLAC hold 39–43 observations for PANAS. Cognitive scales have fewer still.
 7.  **Binary guess.** Treatment belief is reduced to one bit, with no confidence rating, so a confident correct guess and a lucky one are indistinguishable.
 8.  **Association is not causation.** Removing an association between outcome and guessing is not the same as removing expectancy causally.
-9.  **Attenuation is not an effect decomposition.** The gap between \$\Delta(c_{obs})\$ and \$\Delta(0.5)\$ is *not* a measurement of “how much was expectancy”. It is the change in the estimand under a reweighting assumption.
+9.  **Attenuation is not an effect decomposition.** The gap between $\Delta(c_{obs})$ and $\Delta(0.5)$ is *not* a measurement of “how much was expectancy”. It is the change in the estimand under a reweighting assumption.
 10. **Reproducing the curve does not validate the assumptions.** It validates the arithmetic.
 
 ------------------------------------------------------------------------
@@ -1275,7 +1287,7 @@ Stated narrowly, because Section 8 showed both approaches target the same estima
 
 **What it adds:**
 
-- **A quantity with an interpretation.** \$P(\Delta(0.5) > 0 \mid y)\$ is a probability statement about the parameter under the model. An average of 100 p-values is not a p-value for anything.
+- **A quantity with an interpretation.** $P(\Delta(0.5) &gt; 0 \mid y)$ is a probability statement about the parameter under the model. An average of 100 p-values is not a p-value for anything.
 - **Removal of an artefactual error term.** The 0.12–0.29 point Monte Carlo SE from 100 resamples is a property of the computation, not the trial. The conjugate posterior is exact.
 - **Direct uncertainty propagation.** The credible interval comes from the same object as the point estimate, rather than being assembled from resampled fits.
 - **Extensibility.** Robust likelihoods, uncertain ratios, and hierarchical structure are reachable in the same framework.
@@ -1311,7 +1323,7 @@ cgrc(my_trial)
 cgr_operating(n = 120, p_cg = 0.85, n_trials = 500)
 ```
 
-The first line gives the adjusted estimate; the second answers whether CGR adjustment is safe to apply at all for a trial of that size and blinding quality — Section 9 ran exactly this at \$n = 230\$, and it is where you would check that coverage is near 0.95 and the false-favourable rate is controlled before trusting the adjustment on your own data. Installation, the JAGS backend, the robust likelihood, the ROPE summary and the full function list live in the repository README; this section is only the front door.
+The first line gives the adjusted estimate; the second answers whether CGR adjustment is safe to apply at all for a trial of that size and blinding quality — Section 9 ran exactly this at $n = 230$, and it is where you would check that coverage is near 0.95 and the false-favourable rate is controlled before trusting the adjustment on your own data. Installation, the JAGS backend, the robust likelihood, the ROPE summary and the full function list live in the repository README; this section is only the front door.
 
 ------------------------------------------------------------------------
 
@@ -1346,8 +1358,8 @@ app_analyse <- function(df, condc, guessc, valc, direction = 1, delta = NULL,
                         delta_sd_frac = 0.5, force_binary = FALSE, n_draws = 8000) {
   aud   <- cgrc_input_audit(df[[condc]], df[[guessc]], df[[valc]])
   clean <- aud$clean
-  mode  <- if (aud$has_unknown && !force_binary) "unknown" else "binary"
-  if (mode == "binary") clean <- clean[clean$guess %in% c("AC", "PL"), , drop = FALSE]
+  mode  <- if (aud$has_unknown &&!force_binary) "unknown" else "binary"
+  if (mode == "binary") clean <- clean[clean$guess %in% c("AC", "PL"),, drop = FALSE]
   d <- if (!is.null(delta)) delta else delta_sd_frac * stats::sd(clean$value)
   fit <- if (mode == "unknown")
            cgrc_unknown(clean, n_draws = n_draws, direction = direction, seed = 1)
@@ -1456,7 +1468,7 @@ knitr::kable(app_summary(cav_wb), caption = "Cavanna — psychological well-bein
 | Observed correct-guess rate                     | 0.559           |
 | Raw effect (at observed CGR)                    | -0.20           |
 | Adjusted effect (CGR 0.50)                      | -0.16           |
-| Adjusted 95% CrI                                | [-0.95, 0.62] |
+| Adjusted 95% CrI                                | \[-0.95, 0.62\] |
 | P(favourable): raw → adjusted                   | 28% → 33%       |
 | P(exceeds 0.481-unit threshold): raw → adjusted | 3% → 5%         |
 
@@ -1466,7 +1478,7 @@ Cavanna — psychological well-being (higher is better)
 app_curve(cav_wb, "positive")
 ```
 
-![](report-files/full/fig08.png)
+![](https://raw.githubusercontent.com/dsmi313/cgrc.bayes/main/report-files/full/fig08.png)
 
 ```r
 knitr::kable(app_summary(cav_vas), caption = "Cavanna — dosing-day acute-effect VAS (positive control)")
@@ -1478,7 +1490,7 @@ knitr::kable(app_summary(cav_vas), caption = "Cavanna — dosing-day acute-effec
 | Observed correct-guess rate                    | 0.559            |
 | Raw effect (at observed CGR)                   | 11.11            |
 | Adjusted effect (CGR 0.50)                     | 10.14            |
-| Adjusted 95% CrI                               | [-4.61, 24.56] |
+| Adjusted 95% CrI                               | \[-4.61, 24.56\] |
 | P(favourable): raw → adjusted                  | 95% → 92%        |
 | P(exceeds 9.51-unit threshold): raw → adjusted | 60% → 54%        |
 
@@ -1488,7 +1500,7 @@ Cavanna — dosing-day acute-effect VAS (positive control)
 app_curve(cav_vas, "positive")
 ```
 
-![](report-files/full/fig09.png)
+![](https://raw.githubusercontent.com/dsmi313/cgrc.bayes/main/report-files/full/fig09.png)
 
 The region-of-practical-equivalence view sharpens the positive control: it asks not just whether the VAS effect is above zero but whether it clears a half-SD meaningful-difference band. At the observed CGR most of the posterior sits in **meaningful benefit**, so the acute effect is large, not merely non-zero.
 
@@ -1496,7 +1508,7 @@ The region-of-practical-equivalence view sharpens the positive control: it asks 
 app_rope(cav_vas)
 ```
 
-![](report-files/full/fig10.png)
+![](https://raw.githubusercontent.com/dsmi313/cgrc.bayes/main/report-files/full/fig10.png)
 
 Well-being shows nothing to adjust: a raw active-minus-placebo difference near zero with P(favourable) only 28%, essentially unchanged at perfect blinding (33%). The dosing-day VAS — the positive control — is the opposite: a raw effect of 11.1 points with P(favourable) 95%, and it *survives* CGR adjustment (92% at CGR 0.50). A real acute pharmacological signal that reweighting does not explain away — but note the primary caveat: a genuine acute effect can itself drive the correct guess, so here low attenuation is *expected* and is not by itself evidence that expectancy was absent.
 
@@ -1539,7 +1551,7 @@ knitr::kable(app_summary(san), caption = "Santana — 6-month ITT pain improveme
 | Observed correct-guess rate                   | 0.569          |
 | Raw effect (at observed CGR)                  | 1.58           |
 | Adjusted effect (CGR 0.50)                    | 1.43           |
-| Adjusted 95% CrI                              | [0.49, 2.41] |
+| Adjusted 95% CrI                              | \[0.49, 2.41\] |
 | P(favourable): raw → adjusted                 | 100% → 100%    |
 | P(exceeds 1.5-unit threshold): raw → adjusted | 57% → 45%      |
 
@@ -1549,7 +1561,7 @@ Santana — 6-month ITT pain improvement, UNKNOWN preserved (MID 1.5)
 app_curve(san, "favourable")
 ```
 
-![](report-files/full/fig11.png)
+![](https://raw.githubusercontent.com/dsmi313/cgrc.bayes/main/report-files/full/fig11.png)
 
 Here the ROPE is the point. P(favourable) is essentially 100%, but splitting the posterior at the 1.5-point MID shows that at perfect blinding only about 45% of the mass is a *meaningful* benefit; the rest is practically negligible. The effect is real and favourable, but only borderline clinically important.
 
@@ -1557,7 +1569,7 @@ Here the ROPE is the point. P(favourable) is essentially 100%, but splitting the
 app_rope(san, xlab = "directional CGR (among AC/PL responses)")
 ```
 
-![](report-files/full/fig12.png)
+![](https://raw.githubusercontent.com/dsmi313/cgrc.bayes/main/report-files/full/fig12.png)
 
 This is the clearest case for the UNKNOWN extension. 26 of 77 participants (34%) answered “I do not know.” Forcing the binary complete-case analysis keeps only 51 participants and leaves an active/placebo-guess stratum of a single person — and it does not merely discard data, it *distorts* the estimate: the complete-case adjusted effect is 0.65 points, against 1.43 when UNKNOWN is preserved across all 77. Preserving UNKNOWN, the reweighted pain benefit is favourable with P(favourable) essentially 100%, and barely moves from the raw estimate (1.58 → 1.43) because the directional CGR (0.569) is already close to 0.5. The decision-relevant number is the probability the effect clears the 1.5-point MID: 57% raw → 45% adjusted — a real, favourable effect sitting right at the edge of clinical importance.
 
@@ -1596,7 +1608,7 @@ knitr::kable(app_summary(ket), caption = "Lii / ketamine — mean MADRS Days 1-3
 | Observed correct-guess rate                    | 0.519           |
 | Raw effect (at observed CGR)                   | -3.02           |
 | Adjusted effect (CGR 0.50)                     | -2.80           |
-| Adjusted 95% CrI                               | [-8.36, 2.63] |
+| Adjusted 95% CrI                               | \[-8.36, 2.63\] |
 | P(favourable): raw → adjusted                  | 87% → 86%       |
 | P(exceeds 4.55-unit threshold): raw → adjusted | 28% → 25%       |
 
@@ -1606,7 +1618,7 @@ Lii / ketamine — mean MADRS Days 1-3 (lower is better; direction = -1)
 app_curve(ket, "favourable")
 ```
 
-![](report-files/full/fig13.png)
+![](https://raw.githubusercontent.com/dsmi313/cgrc.bayes/main/report-files/full/fig13.png)
 
 The ROPE tells the same cautionary story: the MADRS advantage is favourable, but at a half-SD meaningful-difference band only about 26% of the posterior is a meaningful benefit — most is practically negligible. P(favourable) alone would have overstated the clinical case.
 
@@ -1614,7 +1626,7 @@ The ROPE tells the same cautionary story: the MADRS advantage is favourable, but
 app_rope(ket, xlab = "directional CGR (among AC/PL responses)")
 ```
 
-![](report-files/full/fig14.png)
+![](https://raw.githubusercontent.com/dsmi313/cgrc.bayes/main/report-files/full/fig14.png)
 
 Guessing here is near chance (directional CGR 0.519): masked by anaesthesia, patients could not tell ketamine from placebo. That is exactly the regime where CGR adjustment *should* do almost nothing — and it does. The raw MADRS advantage of -3 points (favourable = lower) barely moves to -2.8 at perfect blinding, with P(favourable) 87% → 86%. Here the CGRC is *confirmatory*: because blinding held, the modest antidepressant signal is not an expectancy artefact — and with all six strata populated, the reweighting is well-defined rather than resting on a thin cell.
 
