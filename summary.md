@@ -168,7 +168,7 @@ CGR-adjusted results, four outcomes (adjusted = target CGR 0.50; meaningful = be
 plot(fit_panas, title = "PANAS, week 1")
 ```
 
-![](report-files/summary/fig01.png)
+![](https://raw.githubusercontent.com/dsmi313/cgrc.bayes/main/report-files/summary/fig01.png)
 
 The final column is the published CGR-adjusted estimate for the same outcome. The posterior means agree with it to within about 0.3 points across all four scales, which is the closest thing here to a direct reproduction check on empirical data rather than on simulation.
 
@@ -521,7 +521,7 @@ app_curve(A$Santana, "favorable") +   # UNKNOWN preserved; effect at the clinica
   ggplot2::theme(text = ggplot2::element_text(size = 15))
 ```
 
-![Santana-Penín et al. (2023), sham dental therapy: pain improvement at 6 months, UNKNOWN preserved](report-files/summary/fig02.png)
+![Santana-Penín et al. (2023), sham dental therapy: pain improvement at 6 months, UNKNOWN preserved](https://raw.githubusercontent.com/dsmi313/cgrc.bayes/main/report-files/summary/fig02.png)
 
 *Santana-Penín et al. (2023), sham dental therapy: pain improvement at 6 months, UNKNOWN preserved*
 
@@ -533,7 +533,7 @@ app_curve(A$Lii, "favorable") +       # near-chance guessing; correction is smal
   ggplot2::theme(text = ggplot2::element_text(size = 15))
 ```
 
-![Lii et al. (2023), ketamine masked by anesthesia: MADRS depression score, directional guessing near chance](report-files/summary/fig03.png)
+![Lii et al. (2023), ketamine masked by anesthesia: MADRS depression score, directional guessing near chance](https://raw.githubusercontent.com/dsmi313/cgrc.bayes/main/report-files/summary/fig03.png)
 
 *Lii et al. (2023), ketamine masked by anesthesia: MADRS depression score, directional guessing near chance*
 
